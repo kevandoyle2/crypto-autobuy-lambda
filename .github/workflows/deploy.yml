@@ -48,13 +48,17 @@ jobs:
       - name: Package Lambda functions
         run: |
           LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth")
-          VERSION=${{ env.VERSION }}
+          VERSION=$VERSION
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
             echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
-              # Install dependencies from requirements.txt
+              # Copy layer dependencies into the Lambda directory
+              if [ -d "../layer/python" ]; then
+                cp -r ../layer/python/* .
+              fi
+              # Install additional dependencies from requirements.txt
               if [ -f "requirements.txt" ]; then
                 pip install -r requirements.txt -t .
               fi
@@ -70,7 +74,7 @@ jobs:
       - name: Upload Lambda code to S3
         run: |
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          VERSION=${{ env.VERSION }}
+          VERSION=$VERSION
           for dir in convert-gusd manual-buy-btc manual-buy-eth recurring-buy-btc recurring-buy-eth; do
             aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
             echo "Uploaded ${dir}-${VERSION}.zip to S3"
@@ -79,7 +83,7 @@ jobs:
       - name: Deploy CloudFormation stack
         run: |
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          VERSION=${{ env.VERSION }}
+          VERSION=$VERSION
           aws cloudformation deploy \
             --template-file template.yml \
             --stack-name CryptoAutobuyLambdasStack \
