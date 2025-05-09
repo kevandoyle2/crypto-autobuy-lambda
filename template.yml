@@ -48,6 +48,10 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: "arn:aws:secretsmanager:us-east-1:137530478974:secret:GeminiApiKeys-uNQ040"
 
   ConvertGUSD:
     Type: AWS::Lambda::Function
@@ -63,9 +67,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
-          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
-          FORCE_UPDATE: '2025-05-09-v3'  # Force update to recover from failed state
+          # No API keys here; they are retrieved from Secrets Manager
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
@@ -81,8 +83,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
-          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+          # No API keys here; they are retrieved from Secrets Manager
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
@@ -98,8 +99,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
-          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+          # No API keys here; they are retrieved from Secrets Manager
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
@@ -115,8 +115,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
-          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+          # No API keys here; they are retrieved from Secrets Manager
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
@@ -132,8 +131,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
-          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+          # No API keys here; they are retrieved from Secrets Manager
 
 Outputs:
   ConvertGUSDArn:

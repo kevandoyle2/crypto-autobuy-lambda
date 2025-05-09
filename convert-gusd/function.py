@@ -1,8 +1,24 @@
 import json
+import os
+import boto3
 import gemini
 
-public_key = 'account-MZdSIrTlCgMdt2278U8H'
-private_key = '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+# Initialize Secrets Manager client
+secrets_client = boto3.client('secretsmanager')
+
+# Retrieve API keys from Secrets Manager
+def get_api_keys():
+    secret_name = "GeminiApiKeys"
+    region_name = "us-east-1"
+
+    try:
+        get_secret_value_response = secrets_client.get_secret_value(SecretId=secret_name)
+        secret = json.loads(get_secret_value_response['SecretString'])
+        public_key = secret['GEMINI_PUBLIC_KEY']
+        private_key = secret['GEMINI_PRIVATE_KEY']
+        return public_key, private_key
+    except Exception as e:
+        raise ValueError(f"Error retrieving secrets from AWS Secrets Manager: {str(e)}")
 
 #This function converts all your GUSD to USD
 def _convertGUSDtoUSD(pub_key, priv_key):
