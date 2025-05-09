@@ -25,6 +25,14 @@ Parameters:
     Type: String
     Description: S3 key for RecurringBuyETH code
     Default: recurring-buy-eth.zip
+  ManualSellBTCCodeKey:
+    Type: String
+    Description: S3 key for ManualSellBTC code
+    Default: manual-sell-btc.zip
+  ManualSellETHCodeKey:
+    Type: String
+    Description: S3 key for ManualSellETH code
+    Default: manual-sell-eth.zip
 
 Resources:
   LambdaExecutionRole:
@@ -92,6 +100,32 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
+  ManualSellBTC:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualSellBTC
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref ManualSellBTCCodeKey
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  ManualSellETH:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualSellETH
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref ManualSellETHCodeKey
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
     Properties:
@@ -125,6 +159,10 @@ Outputs:
     Value: !GetAtt ManualBuyBTC.Arn
   ManualBuyETHArn:
     Value: !GetAtt ManualBuyETH.Arn
+  ManualSellBTCArn:
+    Value: !GetAtt ManualSellBTC.Arn
+  ManualSellETHArn:
+    Value: !GetAtt ManualSellETH.Arn
   RecurringBuyBTCArn:
     Value: !GetAtt RecurringBuyBTC.Arn
   RecurringBuyETHArn:
