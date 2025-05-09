@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy multiple Lambda functions for crypto-autobuy
+Description: Deploy multiple Lambda functions for crypto-autobuy and autosell
 
 Parameters:
   CodeBucket:
@@ -100,32 +100,6 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  ManualSellBTC:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualSellBTC
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualSellBTCCodeKey
-      Runtime: python3.9
-      Timeout: 30
-      MemorySize: 128
-
-  ManualSellETH:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualSellETH
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualSellETHCodeKey
-      Runtime: python3.9
-      Timeout: 30
-      MemorySize: 128
-
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
     Properties:
@@ -152,6 +126,32 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
+  ManualSellBTC:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualSellBTC
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref ManualSellBTCCodeKey
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  ManualSellETH:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualSellETH
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref ManualSellETHCodeKey
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
 Outputs:
   ConvertGUSDArn:
     Value: !GetAtt ConvertGUSD.Arn
@@ -159,11 +159,11 @@ Outputs:
     Value: !GetAtt ManualBuyBTC.Arn
   ManualBuyETHArn:
     Value: !GetAtt ManualBuyETH.Arn
-  ManualSellBTCArn:
-    Value: !GetAtt ManualSellBTC.Arn
-  ManualSellETHArn:
-    Value: !GetAtt ManualSellETH.Arn
   RecurringBuyBTCArn:
     Value: !GetAtt RecurringBuyBTC.Arn
   RecurringBuyETHArn:
     Value: !GetAtt RecurringBuyETH.Arn
+  ManualSellBTCArn:
+    Value: !GetAtt ManualSellBTC.Arn
+  ManualSellETHArn:
+    Value: !GetAtt ManualSellETH.Arn
