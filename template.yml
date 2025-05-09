@@ -38,7 +38,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: convert-gusd.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
 
@@ -51,7 +51,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: manual-buy-btc.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
 
@@ -64,7 +64,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: manual-buy-eth.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
 
@@ -77,7 +77,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: recurring-buy-btc.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
 
@@ -90,7 +90,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: recurring-buy-eth.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
 
