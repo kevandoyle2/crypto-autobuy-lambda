@@ -1,5 +1,5 @@
 import json
-import gemini_api as gemini
+import gemini
 
 public_key = "account-o9XJU8CQQOORZhF3XUgO"  
 private_key = "41Y96RACGnnvinU1NLq5WTv6muJC"

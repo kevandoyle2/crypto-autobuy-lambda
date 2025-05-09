@@ -41,7 +41,7 @@ jobs:
             echo "Bucket $BUCKET_NAME already exists."
           fi
 
-      - name: Package Lambda functions
+      - name: Package Lambda functions with layer dependencies
         run: |
           LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth")
           mkdir -p dist
@@ -49,9 +49,15 @@ jobs:
             echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
+              # Copy layer dependencies into the Lambda directory
+              if [ -d "../layer/python" ]; then
+                cp -r ../layer/python/* .
+              fi
+              # Install additional dependencies from requirements.txt (if any)
               if [ -f "requirements.txt" ]; then
                 pip install -r requirements.txt -t .
               fi
+              # Zip the contents
               zip -r "../dist/${dir}.zip" .
               cd ..
               echo "Packaged $dir into dist/${dir}.zip"
