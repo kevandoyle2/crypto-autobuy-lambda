@@ -5,6 +5,26 @@ Parameters:
   CodeBucket:
     Type: String
     Description: S3 bucket containing Lambda code
+  ConvertGUSDCodeKey:
+    Type: String
+    Description: S3 key for ConvertGUSD code
+    Default: convert-gusd.zip
+  ManualBuyBTCCodeKey:
+    Type: String
+    Description: S3 key for ManualBuyBTC code
+    Default: manual-buy-btc.zip
+  ManualBuyETHCodeKey:
+    Type: String
+    Description: S3 key for ManualBuyETH code
+    Default: manual-buy-eth.zip
+  RecurringBuyBTCCodeKey:
+    Type: String
+    Description: S3 key for RecurringBuyBTC code
+    Default: recurring-buy-btc.zip
+  RecurringBuyETHCodeKey:
+    Type: String
+    Description: S3 key for RecurringBuyETH code
+    Default: recurring-buy-eth.zip
 
 Resources:
   LambdaExecutionRole:
@@ -37,15 +57,14 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: convert-gusd.zip
-      Runtime: python3.8
+        S3Key: !Ref ConvertGUSDCodeKey
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
       Environment:
         Variables:
           GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
           GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
-          FORCE_UPDATE: '2025-05-09-v2'  # Force CloudFormation to update
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
@@ -55,7 +74,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: manual-buy-btc.zip
+        S3Key: !Ref ManualBuyBTCCodeKey
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
@@ -72,7 +91,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: manual-buy-eth.zip
+        S3Key: !Ref ManualBuyETHCodeKey
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
@@ -89,7 +108,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: recurring-buy-btc.zip
+        S3Key: !Ref RecurringBuyBTCCodeKey
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
@@ -106,7 +125,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
-        S3Key: recurring-buy-eth.zip
+        S3Key: !Ref RecurringBuyETHCodeKey
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
