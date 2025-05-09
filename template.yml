@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy multiple Lambda functions for crypto-autobuy
+
+Parameters:
+  CodeBucket:
+    Type: String
+    Description: S3 bucket containing Lambda code
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaBasicExecution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  ConvertGUSD:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ConvertGUSD
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: convert-gusd.zip
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  ManualBuyBTC:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualBuyBTC
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: manual-buy-btc.zip
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  ManualBuyETH:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ManualBuyETH
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: manual-buy-eth.zip
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  RecurringBuyBTC:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: RecurringBuyBTC
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: recurring-buy-btc.zip
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+  RecurringBuyETH:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: RecurringBuyETH
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: recurring-buy-eth.zip
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 128
+
+Outputs:
+  ConvertGUSDArn:
+    Value: !GetAtt ConvertGUSD.Arn
+  ManualBuyBTCArn:
+    Value: !GetAtt ManualBuyBTC.Arn
+  ManualBuyETHArn:
+    Value: !GetAtt ManualBuyETH.Arn
+  RecurringBuyBTCArn:
+    Value: !GetAtt RecurringBuyBTC.Arn
+  RecurringBuyETHArn:
+    Value: !GetAtt RecurringBuyETH.Arn

@@ -1,0 +1,79 @@
+name: Deploy Lambda with CloudFormation
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install AWS CLI
+        run: |
+          pip install awscli
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Create S3 bucket
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "Creating S3 bucket $BUCKET_NAME..."
+            aws s3 mb "s3://$BUCKET_NAME" --region us-east-1
+          else
+            echo "Bucket $BUCKET_NAME already exists."
+          fi
+
+      - name: Package Lambda functions
+        run: |
+          LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth")
+          mkdir -p dist
+          for dir in "${LAMBDA_DIRS[@]}"; do
+            echo "Processing $dir..."
+            if [ -d "$dir" ]; then
+              cd "$dir"
+              if [ -f "requirements.txt" ]; then
+                pip install -r requirements.txt -t .
+              fi
+              zip -r "../dist/${dir}.zip" .
+              cd ..
+              echo "Packaged $dir into dist/${dir}.zip"
+            else
+              echo "Directory $dir does not exist. Skipping..."
+            fi
+          done
+
+      - name: Upload Lambda code to S3
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          for zipfile in dist/*.zip; do
+            filename=$(basename "$zipfile")
+            aws s3 cp "$zipfile" "s3://$BUCKET_NAME/$filename"
+            echo "Uploaded $filename to S3"
+          done
+
+      - name: Deploy CloudFormation stack
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          aws cloudformation deploy \
+            --template-file template.yml \
+            --stack-name CryptoAutobuyLambdasStack \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides CodeBucket="$BUCKET_NAME"
