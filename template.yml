@@ -41,6 +41,11 @@ Resources:
       Runtime: python3.8
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
+          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
+          FORCE_UPDATE: '2025-05-09-v2'  # Force CloudFormation to update
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
@@ -51,9 +56,13 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: manual-buy-btc.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
+          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
@@ -64,9 +73,13 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: manual-buy-eth.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
+          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
@@ -77,9 +90,13 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: recurring-buy-btc.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
+          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
@@ -90,9 +107,13 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: recurring-buy-eth.zip
-      Runtime: python3.8
+      Runtime: python3.9
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          GEMINI_PUBLIC_KEY: 'account-MZdSIrTlCgMdt2278U8H'
+          GEMINI_PRIVATE_KEY: '4LPajVrWCb7iopoz4JqZ8CQXrvbq'
 
 Outputs:
   ConvertGUSDArn:
