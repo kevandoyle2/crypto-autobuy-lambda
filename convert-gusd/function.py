@@ -34,8 +34,19 @@ def _convertGUSDtoUSD(pub_key, priv_key):
 
 
 def lambda_handler(event, context):
-    _convertGUSDtoUSD(public_key, private_key)
-    return {
-        'statusCode': 200,
-        'body': json.dumps('End of script')
-    }
+
+    try:
+        # Retrieve API keys from Secrets Manager
+        public_key, private_key = get_api_keys()
+        
+        _convertGUSDtoUSD(public_key, private_key)
+        return {
+            'statusCode': 200,
+            'body': json.dumps('End of script')
+            }
+    
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }

@@ -47,8 +47,18 @@ def _buyBitcoin(buy_size,pub_key, priv_key):
 
 
 def lambda_handler(event, context):
-    _buyBitcoin(3451.3, public_key, private_key)
-    return {
-        'statusCode': 200,
-        'body': json.dumps('End of script')
-    }
+    try:
+        # Retrieve API keys from Secrets Manager
+        public_key, private_key = get_api_keys()
+        
+        # Execute the buy with a fixed amount
+        result = _buyBitcoin(3451.3, public_key, private_key)
+        return {
+            'statusCode': 200,
+            'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
