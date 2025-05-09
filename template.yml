@@ -65,9 +65,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
-      Environment:
-        Variables:
-          # No API keys here; they are retrieved from Secrets Manager
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
@@ -81,9 +78,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
-      Environment:
-        Variables:
-          # No API keys here; they are retrieved from Secrets Manager
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
@@ -97,9 +91,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
-      Environment:
-        Variables:
-          # No API keys here; they are retrieved from Secrets Manager
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
@@ -113,9 +104,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
-      Environment:
-        Variables:
-          # No API keys here; they are retrieved from Secrets Manager
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
@@ -129,9 +117,6 @@ Resources:
       Runtime: python3.9
       Timeout: 30
       MemorySize: 128
-      Environment:
-        Variables:
-          # No API keys here; they are retrieved from Secrets Manager
 
 Outputs:
   ConvertGUSDArn:
