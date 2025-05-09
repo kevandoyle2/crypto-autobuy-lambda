@@ -52,7 +52,7 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
         
         # Execute the buy with a fixed amount
-        result = _buyBitcoin(3451.3, public_key, private_key)
+        result = _buyBitcoin(2.5, public_key, private_key)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})

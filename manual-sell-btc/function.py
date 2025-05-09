@@ -47,7 +47,7 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
 
         # Specify how much USD worth of BTC to sell
-        result = _sellBitcoin(3451.3, public_key, private_key)
+        result = _sellBitcoin(2.5, public_key, private_key)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})

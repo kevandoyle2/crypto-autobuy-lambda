@@ -48,7 +48,7 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
 
         # Execute the sell with a fixed USD amount
-        result = _sellEthereum(1777.0, public_key, private_key)
+        result = _sellEthereum(2.5, public_key, private_key)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})
