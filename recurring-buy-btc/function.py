@@ -1,7 +1,4 @@
 import json
-import gemini
-
-import json
 import os
 import boto3
 import gemini
