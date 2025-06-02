@@ -90,16 +90,29 @@ jobs:
             echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
-              # Copy layer dependencies into the Lambda directory
-              if [ -d "../layer/python" ]; then
-                cp -r ../layer/python/* .
-              fi
+              # Debug: List files before installation
+              echo "Files before installation:"
+              ls -la
               # Install additional dependencies from requirements.txt
               if [ -f "requirements.txt" ]; then
+                echo "Installing dependencies from requirements.txt..."
                 pip install -r requirements.txt -t .
+                # Debug: List files after installation
+                echo "Files after installation:"
+                ls -la | grep -E "requests|__pycache__"
+              else
+                echo "No requirements.txt found in $dir"
               fi
-              # Zip the contents with a versioned name
-              zip -r "../dist/${dir}-${VERSION}.zip" .
+              # Verify shared directory exists at root
+              if [ ! -d "../shared" ]; then
+                echo "shared directory not found at root!"
+                exit 1
+              fi
+              # Zip the contents with a versioned name, including the root shared/ directory
+              echo "Zipping contents..."
+              zip -r "../dist/${dir}-${VERSION}.zip" . ../shared
+              # Debug: List zip contents
+              unzip -l "../dist/${dir}-${VERSION}.zip"
               cd ..
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
             else
