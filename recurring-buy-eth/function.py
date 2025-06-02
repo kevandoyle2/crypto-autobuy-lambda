@@ -1,7 +1,10 @@
 import json
 import os
 import boto3
-import gemini
+import requests
+import hmac
+import hashlib
+import time
 
 # Initialize Secrets Manager client
 secrets_client = boto3.client('secretsmanager')
@@ -20,35 +23,69 @@ def get_api_keys():
     except Exception as e:
         raise ValueError(f"Error retrieving secrets from AWS Secrets Manager: {str(e)}")
 
+# Generate HMAC-SHA384 signature for Gemini API
+def generate_signature(payload, secret_key, timestamp):
+    payload_to_sign = str(timestamp) + payload
+    signature = hmac.new(
+        secret_key.encode(),
+        payload_to_sign.encode(),
+        hashlib.sha384
+    ).hexdigest()
+    return signature
+
 symbol = "ETHUSD"
 tick_size = 6
 quote_currency_price_increment = 2
-#update symbol based on what crypto/fiat pair you want to buy. Default is BTCUSD, change to BTCEUR for Euros or ETHUSD for Ethereum (for example) - see all possibilities down in symbols and minimums link
-#update tick_size and quote_currency_price_increment based on what crypto-pair you are buying. BTC is 8 - in the doc it says 1e-8 you want the number after e-. Or in the case of .01 you want 2 (because .01 is 1e-2) 
-#Check out the API link below to see what you need for your pair
-#https://docs.gemini.com/rest-api/#symbols-and-minimums
 
-def _buyEtherium(buy_size,pub_key, priv_key):
-    # Set up a buy for the current price
-    trader = gemini.PrivateClient(pub_key, priv_key)
-    factor = 0.998
-    #to set a limit order at a fixed price (ie. $55,525) set execution_price = "55525.00" or execution_price = str(55525.00)
-    price = str(round(float(trader.get_ticker(symbol)['ask'])*factor,quote_currency_price_increment))
+def _buyEthereum(buy_size, pub_key, priv_key):
+    base_url = "https://api.gemini.com"
+    endpoint = "/v1/ticker/ETHUSD"
+    
+    # Get current ask price
+    timestamp = int(time.time())
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature("", priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp)
+    }
+    response = requests.get(f"{base_url}{endpoint}", headers=headers)
+    response.raise_for_status()
+    ticker = response.json()
+    symbol_spot_price = float(ticker['ask'])
+    print(f"Spot Ask Price: {symbol_spot_price}")
 
-    #set amount to the most precise rounding (tick_size) and multiply by 0.998 for fee inclusion - if you make an order for $20.00 there should be $19.96 coin bought and $0.04 (0.20% fee)
-    eth_amount = round((buy_size*factor)/float(price),tick_size)
+    factor = 0.998  # Adjusted factor from original code
+    execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
+    eth_amount = round((buy_size * factor) / float(execution_price), tick_size)
 
-    #execute maker buy, round to 8 decimal places for precision, multiply price by 2 so your limit order always gets fully filled
-    buy = trader.new_order(symbol, str(eth_amount), price, "buy", ["maker-or-cancel"])
-    print(f'Maker Buy: {buy}')
+    # Place buy order
+    endpoint = "/v1/order/new"
+    payload = json.dumps({
+        "request": "/v1/order/new",
+        "nonce": str(int(time.time() * 1000)),
+        "symbol": symbol,
+        "amount": str(eth_amount),
+        "price": execution_price,
+        "side": "buy",
+        "type": "exchange limit",
+        "options": ["maker-or-cancel"]
+    })
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp),
+        "Content-Type": "text/plain"
+    }
+    order_response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
+    order_response.raise_for_status()
+    result = order_response.json()
+    print(f'Maker Buy: {result}')
+    return result
 
 def lambda_handler(event, context):
     try:
-        # Retrieve API keys from Secrets Manager
         public_key, private_key = get_api_keys()
-        
-        # Execute the buy with a fixed amount
-        result = _buyEtherium(27.2, public_key, private_key)
+        result = _buyEthereum(27.2, public_key, private_key)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})

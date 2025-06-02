@@ -1,7 +1,10 @@
 import json
 import os
 import boto3
-import gemini
+import requests
+import hmac
+import hashlib
+import time
 
 # Initialize Secrets Manager client
 secrets_client = boto3.client('secretsmanager')
@@ -20,34 +23,68 @@ def get_api_keys():
     except Exception as e:
         raise ValueError(f"Error retrieving secrets from AWS Secrets Manager: {str(e)}")
 
+# Generate HMAC-SHA384 signature for Gemini API
+def generate_signature(payload, secret_key, timestamp):
+    payload_to_sign = str(timestamp) + payload
+    signature = hmac.new(
+        secret_key.encode(),
+        payload_to_sign.encode(),
+        hashlib.sha384
+    ).hexdigest()
+    return signature
+
 symbol = "ETHUSD"
 tick_size = 6
 quote_currency_price_increment = 2
-# ETH has 6 decimal precision and USD typically has 2
 
 def _sellEthereum(sell_size_usd, pub_key, priv_key):
-    trader = gemini.PrivateClient(pub_key, priv_key)
+    base_url = "https://api.gemini.com"
+    endpoint = "/v1/ticker/ETHUSD"
+    
+    # Get current bid price
+    timestamp = int(time.time())
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature("", priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp)
+    }
+    response = requests.get(f"{base_url}{endpoint}", headers=headers)
+    response.raise_for_status()
+    ticker = response.json()
+    symbol_spot_price = float(ticker['bid'])
+    print(f"Bid Price: {symbol_spot_price}")
 
-    # Use the current bid price (what buyers are offering)
-    spot_price = float(trader.get_ticker(symbol)['bid'])
-    print(f"Bid Price: {spot_price}")
-
-    factor = 1.001  # Slightly above spot to help the order fill at a favorable price
-    execution_price = str(round(spot_price * factor, quote_currency_price_increment))
-
-    # Compute ETH amount to sell after fees
+    factor = 1.001
+    execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
     eth_amount = round((sell_size_usd * 0.998) / float(execution_price), tick_size)
 
-    # Place the sell order
-    sell = trader.new_order(symbol, str(eth_amount), execution_price, "sell", ["maker-or-cancel"])
-    print(f'Maker Sell: {sell}')
-    return sell
+    # Place sell order
+    endpoint = "/v1/order/new"
+    payload = json.dumps({
+        "request": "/v1/order/new",
+        "nonce": str(int(time.time() * 1000)),
+        "symbol": symbol,
+        "amount": str(eth_amount),
+        "price": execution_price,
+        "side": "sell",
+        "type": "exchange limit",
+        "options": ["maker-or-cancel"]
+    })
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp),
+        "Content-Type": "text/plain"
+    }
+    order_response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
+    order_response.raise_for_status()
+    result = order_response.json()
+    print(f'Maker Sell: {result}')
+    return result
 
 def lambda_handler(event, context):
     try:
         public_key, private_key = get_api_keys()
-
-        # Execute the sell with a fixed USD amount
         result = _sellEthereum(2.5, public_key, private_key)
         return {
             'statusCode': 200,

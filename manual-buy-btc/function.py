@@ -1,7 +1,10 @@
 import json
 import os
 import boto3
-import gemini
+import requests
+import hmac
+import hashlib
+import time
 
 # Initialize Secrets Manager client
 secrets_client = boto3.client('secretsmanager')
@@ -19,39 +22,69 @@ def get_api_keys():
         return public_key, private_key
     except Exception as e:
         raise ValueError(f"Error retrieving secrets from AWS Secrets Manager: {str(e)}")
-    
+
+# Generate HMAC-SHA384 signature for Gemini API
+def generate_signature(payload, secret_key, timestamp):
+    payload_to_sign = str(timestamp) + payload
+    signature = hmac.new(
+        secret_key.encode(),
+        payload_to_sign.encode(),
+        hashlib.sha384
+    ).hexdigest()
+    return signature
+
 symbol = "BTCUSD"
 tick_size = 8
 quote_currency_price_increment = 2
-#update symbol based on what crypto/fiat pair you want to buy. Default is BTCUSD, change to BTCEUR for Euros or ETHUSD for Ethereum (for example) - see all possibilities down in symbols and minimums link
-#update tick_size and quote_currency_price_increment based on what crypto-pair you are buying. BTC is 8 - in the doc it says 1e-8 you want the number after e-. Or in the case of .01 you want 2 (because .01 is 1e-2) 
-#Check out the API link below to see what you need for your pair
-#https://docs.gemini.com/rest-api/#symbols-and-minimums
 
-def _buyBitcoin(buy_size,pub_key, priv_key):
-    # Set up a buy for 0.999 times the current price add more decimals for a higher price and faster fill, if the price is too close to spot your order won't post. 
-    # Lower factor makes the order cheaper but fills quickly (0.5 would set an order for half the price and so your order could take months/years/never to fill)
-    trader = gemini.PrivateClient(pub_key, priv_key)
-    symbol_spot_price = float(trader.get_ticker(symbol)['ask'])
-    print(symbol_spot_price)
+def _buyBitcoin(buy_size, pub_key, priv_key):
+    base_url = "https://api.gemini.com"
+    endpoint = "/v1/ticker/BTCUSD"
+    
+    # Get current ask price
+    timestamp = int(time.time())
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature("", priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp)
+    }
+    response = requests.get(f"{base_url}{endpoint}", headers=headers)
+    response.raise_for_status()
+    ticker = response.json()
+    symbol_spot_price = float(ticker['ask'])
+    print(f"Spot Ask Price: {symbol_spot_price}")
+
     factor = 0.999
-    #to set a limit order at a fixed price (ie. $55,525) set execution_price = "55525.00" or execution_price = str(55525.00)
-    execution_price = str(round(symbol_spot_price*factor,quote_currency_price_increment))
+    execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
+    amount = round((buy_size * 0.998) / float(execution_price), tick_size)
 
-    #set amount to the most precise rounding (tick_size) and multiply by 0.998 for fee inclusion - if you make an order for $20.00 there should be $19.96 coin bought and $0.04 (0.20% fee)
-    amount = round((buy_size*0.998)/float(execution_price),tick_size)
-		
-    #execute maker buy with the appropriate symbol, amount, and calculated price
-    buy = trader.new_order(symbol, str(amount), execution_price, "buy", ["maker-or-cancel"])
-    print(f'Maker Buy: {buy}')
-
+    # Place buy order
+    endpoint = "/v1/order/new"
+    payload = json.dumps({
+        "request": "/v1/order/new",
+        "nonce": str(int(time.time() * 1000)),
+        "symbol": symbol,
+        "amount": str(amount),
+        "price": execution_price,
+        "side": "buy",
+        "type": "exchange limit",
+        "options": ["maker-or-cancel"]
+    })
+    headers = {
+        "X-GEMINI-APIKEY": pub_key,
+        "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp),
+        "Content-Type": "text/plain"
+    }
+    order_response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
+    order_response.raise_for_status()
+    result = order_response.json()
+    print(f'Maker Buy: {result}')
+    return result
 
 def lambda_handler(event, context):
     try:
-        # Retrieve API keys from Secrets Manager
         public_key, private_key = get_api_keys()
-        
-        # Execute the buy with a fixed amount
         result = _buyBitcoin(2.5, public_key, private_key)
         return {
             'statusCode': 200,
