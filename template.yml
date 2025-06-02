@@ -5,6 +5,10 @@ Parameters:
   CodeBucket:
     Type: String
     Description: S3 bucket containing Lambda code
+  LambdaRuntime:
+    Type: String
+    Description: Python runtime version for Lambda functions
+    Default: python3.13
   ConvertGUSDCodeKey:
     Type: String
     Description: S3 key for ConvertGUSD code
@@ -70,7 +74,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref ConvertGUSDCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -83,7 +87,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualBuyBTCCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -96,7 +100,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualBuyETHCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -109,7 +113,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref RecurringBuyBTCCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -122,7 +126,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref RecurringBuyETHCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -135,7 +139,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualSellBTCCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
@@ -148,7 +152,7 @@ Resources:
       Code:
         S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualSellETHCodeKey
-      Runtime: python3.9
+      Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 

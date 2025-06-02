@@ -18,7 +18,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.x'  # Selects the latest Python 3 version available
+        id: setup-python
+
+      - name: Get Python version
+        run: |
+          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+          PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
+          echo "PYTHON_VERSION=$PYTHON_VERSION" >> $GITHUB_ENV
+          echo "LAMBDA_RUNTIME=python${PYTHON_MAJOR_MINOR}" >> $GITHUB_ENV
 
       - name: Install AWS CLI
         run: |
@@ -97,6 +105,7 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               CodeBucket="$BUCKET_NAME" \
+              LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
               ConvertGUSDCodeKey="convert-gusd-${VERSION}.zip" \
               ManualBuyBTCCodeKey="manual-buy-btc-${VERSION}.zip" \
               ManualBuyETHCodeKey="manual-buy-eth-${VERSION}.zip" \
