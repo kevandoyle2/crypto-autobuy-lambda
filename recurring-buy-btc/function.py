@@ -39,21 +39,18 @@ quote_currency_price_increment = 2
 
 def _buyBitcoin(buy_size, pub_key, priv_key):
     base_url = "https://api.gemini.com"
-    endpoint = "/v1/ticker/BTCUSD"
     
-    # Get current ask price
-    timestamp = int(time.time())
-    headers = {
-        "X-GEMINI-APIKEY": pub_key,
-        "X-GEMINI-SIGNATURE": generate_signature("", priv_key, timestamp),
-        "X-GEMINI-TIMESTAMP": str(timestamp)
-    }
-    response = requests.get(f"{base_url}{endpoint}", headers=headers)
+    # Get current ask price using public V2 endpoint
+    response = requests.get(f"{base_url}/v2/ticker/BTCUSD")
     response.raise_for_status()
     ticker = response.json()
     symbol_spot_price = float(ticker['ask'])
     print(f"Spot Ask Price: {symbol_spot_price}")
 
+    tick_size = 8
+    quote_currency_price_increment = 2
+    symbol = "BTCUSD"
+    
     factor = 0.999
     execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
     amount = round((buy_size * 0.998) / float(execution_price), tick_size)
@@ -70,12 +67,15 @@ def _buyBitcoin(buy_size, pub_key, priv_key):
         "type": "exchange limit",
         "options": ["maker-or-cancel"]
     })
+
+    timestamp = int(time.time())
     headers = {
         "X-GEMINI-APIKEY": pub_key,
         "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
         "X-GEMINI-TIMESTAMP": str(timestamp),
         "Content-Type": "text/plain"
     }
+
     order_response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
     order_response.raise_for_status()
     result = order_response.json()

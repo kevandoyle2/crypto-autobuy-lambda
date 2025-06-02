@@ -36,16 +36,23 @@ def generate_signature(payload, secret_key, timestamp):
 # This function converts all your GUSD to USD
 def _convertGUSDtoUSD(pub_key, priv_key):
     base_url = "https://api.gemini.com"
+
+    # Step 1: Get balances using the signed /v1/balances endpoint
     endpoint = "/v1/balances"
     timestamp = int(time.time())
+    payload = json.dumps({
+        "request": endpoint,
+        "nonce": str(int(time.time() * 1000))
+    })
 
-    # Get account balances
     headers = {
         "X-GEMINI-APIKEY": pub_key,
-        "X-GEMINI-SIGNATURE": generate_signature("", priv_key, timestamp),
-        "X-GEMINI-TIMESTAMP": str(timestamp)
+        "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
+        "X-GEMINI-TIMESTAMP": str(timestamp),
+        "Content-Type": "text/plain"
     }
-    response = requests.get(f"{base_url}{endpoint}", headers=headers)
+
+    response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
     response.raise_for_status()
     balances = response.json()
 
@@ -56,27 +63,31 @@ def _convertGUSDtoUSD(pub_key, priv_key):
             break
 
     if gusd_balance > 0:
-        # Convert GUSD to USD via a market sell order
+        # Step 2: Place limit sell order for GUSD at $1.00
         endpoint = "/v1/order/new"
-        payload = json.dumps({
-            "request": "/v1/order/new",
+        order_payload = json.dumps({
+            "request": endpoint,
             "nonce": str(int(time.time() * 1000)),
             "symbol": "GUSDUSD",
             "amount": str(gusd_balance),
-            "price": "1.00",  # Market order, price is optional
+            "price": "1.00",
             "side": "sell",
             "type": "exchange limit",
             "options": ["maker-or-cancel"]
         })
+
         headers = {
             "X-GEMINI-APIKEY": pub_key,
-            "X-GEMINI-SIGNATURE": generate_signature(payload, priv_key, timestamp),
+            "X-GEMINI-SIGNATURE": generate_signature(order_payload, priv_key, timestamp),
             "X-GEMINI-TIMESTAMP": str(timestamp),
             "Content-Type": "text/plain"
         }
-        order_response = requests.post(f"{base_url}{endpoint}", data=payload, headers=headers)
+
+        order_response = requests.post(f"{base_url}{endpoint}", data=order_payload, headers=headers)
         order_response.raise_for_status()
-        print(order_response.json())
+        result = order_response.json()
+        print(result)
+        return result
     else:
         return "there is no GUSD to convert in your account"
 
