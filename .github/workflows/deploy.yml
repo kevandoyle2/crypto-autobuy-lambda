@@ -18,15 +18,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'  # Selects the latest Python 3 version available
+          python-version: '3.x'  # Use the latest Python 3 version available in GitHub Actions
         id: setup-python
-
-      - name: Get Python version
-        run: |
-          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
-          PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
-          echo "PYTHON_VERSION=$PYTHON_VERSION" >> $GITHUB_ENV
-          echo "LAMBDA_RUNTIME=python${PYTHON_MAJOR_MINOR}" >> $GITHUB_ENV
 
       - name: Install AWS CLI
         run: |
@@ -38,6 +31,34 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
+
+      - name: Determine latest Lambda Python runtime
+        run: |
+          # List of known Lambda Python runtimes (as of June 2025, update as needed)
+          KNOWN_RUNTIMES=("python3.8" "python3.9" "python3.10" "python3.11" "python3.12" "python3.13")
+          
+          # Get the latest Python version available in GitHub Actions
+          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+          PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
+          GITHUB_LATEST="python${PYTHON_MAJOR_MINOR}"
+          
+          # Select the latest runtime supported by Lambda
+          LAMBDA_RUNTIME=""
+          for runtime in "${KNOWN_RUNTIMES[@]}"; do
+            # Compare versions (simple string comparison for Python runtimes)
+            if [[ "$runtime" == "$GITHUB_LATEST" || "${runtime#python}" < "${GITHUB_LATEST#python}" ]]; then
+              LAMBDA_RUNTIME="$runtime"
+            fi
+          done
+          
+          # If no match found (GitHub Actions has a newer version), use the latest known Lambda runtime
+          if [ -z "$LAMBDA_RUNTIME" ]; then
+            LAMBDA_RUNTIME="python3.13"  # Latest known as of June 2025
+          fi
+          
+          echo "Detected GitHub Actions Python version: $PYTHON_VERSION"
+          echo "Selected Lambda runtime: $LAMBDA_RUNTIME"
+          echo "LAMBDA_RUNTIME=$LAMBDA_RUNTIME" >> $GITHUB_ENV
 
       - name: Create S3 bucket
         run: |
