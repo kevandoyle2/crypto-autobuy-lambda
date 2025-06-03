@@ -79,6 +79,7 @@ Resources:
 
   ConvertGUSD:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: ConvertGUSD
       Handler: function.lambda_handler
@@ -89,10 +90,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualBuyBTC
       Handler: function.lambda_handler
@@ -103,10 +104,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualBuyETH
       Handler: function.lambda_handler
@@ -117,10 +118,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: RecurringBuyBTC
       Handler: function.lambda_handler
@@ -131,10 +132,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: RecurringBuyETH
       Handler: function.lambda_handler
@@ -145,10 +146,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   ManualSellBTC:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualSellBTC
       Handler: function.lambda_handler
@@ -159,10 +160,10 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
   ManualSellETH:
     Type: AWS::Lambda::Function
+    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualSellETH
       Handler: function.lambda_handler
@@ -173,7 +174,6 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
-      DependsOn: CodeBucket
 
 Outputs:
   CodeBucketName:
