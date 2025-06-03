@@ -9,16 +9,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'  # Use the latest Python 3 version available in GitHub Actions
+          python-version: '3.x'
         id: setup-python
 
       - name: Install AWS CLI
@@ -26,10 +27,9 @@ jobs:
           pip install awscli
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
           aws-region: us-east-1
 
       - name: Determine latest Lambda Python runtime
@@ -45,13 +45,12 @@ jobs:
           # Select the latest runtime supported by Lambda
           LAMBDA_RUNTIME=""
           for runtime in "${KNOWN_RUNTIMES[@]}"; do
-            # Compare versions (simple string comparison for Python runtimes)
             if [[ "$runtime" == "$GITHUB_LATEST" || "${runtime#python}" < "${GITHUB_LATEST#python}" ]]; then
               LAMBDA_RUNTIME="$runtime"
             fi
           done
           
-          # If no match found (GitHub Actions has a newer version), use the latest known Lambda runtime
+          # If no match found, use the latest known Lambda runtime
           if [ -z "$LAMBDA_RUNTIME" ]; then
             LAMBDA_RUNTIME="python3.13"  # Latest known as of June 2025
           fi
