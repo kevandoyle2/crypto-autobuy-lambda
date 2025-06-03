@@ -77,6 +77,12 @@ class GeminiClient:
         endpoint = "/v1/order/new"
         return self.make_private_request(endpoint, order_details)
 
+    def get_staking_rates(self):
+        """Fetch staking rates and provider IDs from Gemini."""
+        endpoint = "/v1/staking/rates"
+        payload = {}
+        return self.make_private_request(endpoint, payload)
+
     def stake_assets(self, staking_payload):
         """Stake assets on Gemini."""
         endpoint = "/v1/staking/stake"

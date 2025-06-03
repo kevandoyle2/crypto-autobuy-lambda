@@ -41,11 +41,30 @@ def _stakeEthereum():
     if eth_balance <= 0:
         return {"message": "There is no ETH available to stake in your account"}
 
-    # Step 2: Stake all available ETH
+    # Step 2: Fetch staking rates to get providerId for ETH
+    try:
+        staking_rates = gemini.get_staking_rates()
+    except Exception as e:
+        error_message = f"Failed to retrieve staking rates: {str(e)}"
+        print(error_message)
+        return {"error": error_message}
+
+    eth_provider_id = None
+    for rate in staking_rates:
+        if rate.get('currency') == 'ETH':
+            eth_provider_id = rate.get('providerId')
+            break
+
+    if not eth_provider_id:
+        return {"error": "Could not find providerId for ETH staking"}
+
+    print(f"ETH Staking Provider ID: {eth_provider_id}")
+
+    # Step 3: Stake all available ETH
     staking_payload = {
-        "asset": "ETH",
+        "currency": "ETH",
         "amount": str(eth_balance),
-        "providerId": "gemini"  # Default providerId for Gemini Basic Staking
+        "providerId": eth_provider_id
     }
 
     try:
