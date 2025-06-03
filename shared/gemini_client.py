@@ -27,8 +27,8 @@ class GeminiClient:
         ).hexdigest()
         return signature
 
-    def make_private_request(self, endpoint, payload):
-        """Make a private API request to Gemini."""
+    def make_private_post_request(self, endpoint, payload):
+        """Make a private POST API request to Gemini."""
         nonce = self.get_nonce()
         payload["request"] = endpoint
         payload["nonce"] = nonce
@@ -59,11 +59,47 @@ class GeminiClient:
             raise Exception(error_message)
         return response.json()
 
+    def make_private_get_request(self, endpoint, params=None):
+        """Make a private GET API request to Gemini."""
+        nonce = self.get_nonce()
+        payload = {
+            "request": endpoint,
+            "nonce": nonce
+        }
+        if params:
+            payload.update(params)
+        payload_json = json.dumps(payload)
+        payload_base64 = base64.b64encode(payload_json.encode()).decode()
+        timestamp = int(time.time())
+        signature = self.generate_signature(payload_base64)
+
+        headers = {
+            "X-GEMINI-APIKEY": self.public_key,
+            "X-GEMINI-PAYLOAD": payload_base64,
+            "X-GEMINI-SIGNATURE": signature,
+            "X-GEMINI-TIMESTAMP": str(timestamp),
+            "Content-Type": "text/plain",
+            "Content-Length": "0",
+            "Cache-Control": "no-cache"
+        }
+
+        print(f"Requesting {endpoint} with timestamp: {timestamp}, nonce: {nonce}")
+        response = requests.get(f"{self.base_url}{endpoint}", headers=headers)
+        print(f"Response Status Code: {response.status_code}", flush=True)
+        print(f"Response Text: {response.text}", flush=True)
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            error_message = f"HTTP Error: {e}, Response: {response.text}"
+            print(error_message, flush=True)
+            raise Exception(error_message)
+        return response.json()
+
     def get_balance(self):
         """Fetch account balances from Gemini."""
         endpoint = "/v1/balances"
         payload = {}
-        return self.make_private_request(endpoint, payload)
+        return self.make_private_post_request(endpoint, payload)
 
     def get_ticker(self, symbol):
         """Fetch ticker data for a given symbol (public endpoint)."""
@@ -75,15 +111,14 @@ class GeminiClient:
     def place_order(self, order_details):
         """Place an order on Gemini."""
         endpoint = "/v1/order/new"
-        return self.make_private_request(endpoint, order_details)
+        return self.make_private_post_request(endpoint, order_details)
 
     def get_staking_rates(self):
         """Fetch staking rates and provider IDs from Gemini."""
         endpoint = "/v1/staking/rates"
-        payload = {}
-        return self.make_private_request(endpoint, payload)
+        return self.make_private_get_request(endpoint)
 
     def stake_assets(self, staking_payload):
         """Stake assets on Gemini."""
         endpoint = "/v1/staking/stake"
-        return self.make_private_request(endpoint, staking_payload)
+        return self.make_private_post_request(endpoint, staking_payload)
