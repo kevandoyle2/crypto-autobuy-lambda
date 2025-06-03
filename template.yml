@@ -39,6 +39,12 @@ Parameters:
     Default: manual-sell-eth.zip
 
 Resources:
+  CodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref CodeBucket
+      AccessControl: Private
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -83,6 +89,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
@@ -96,6 +103,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
@@ -109,6 +117,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
@@ -122,6 +131,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
@@ -135,6 +145,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   ManualSellBTC:
     Type: AWS::Lambda::Function
@@ -148,6 +159,7 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
   ManualSellETH:
     Type: AWS::Lambda::Function
@@ -161,8 +173,11 @@ Resources:
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
+      DependsOn: CodeBucket
 
 Outputs:
+  CodeBucketName:
+    Value: !Ref CodeBucket
   ConvertGUSDArn:
     Value: !GetAtt ConvertGUSD.Arn
   ManualBuyBTCArn:
