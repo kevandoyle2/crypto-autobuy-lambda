@@ -82,7 +82,7 @@ jobs:
 
       - name: Package Lambda functions
         run: |
-          LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth" "manual-sell-btc" "manual-sell-eth")
+          LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth" "manual-sell-btc" "manual-sell-eth" "stake-eth")
           VERSION=${{ env.VERSION }}
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
@@ -123,7 +123,7 @@ jobs:
         run: |
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
-          for dir in convert-gusd manual-buy-btc manual-buy-eth recurring-buy-btc recurring-buy-eth manual-sell-btc manual-sell-eth; do
+          for dir in convert-gusd manual-buy-btc manual-buy-eth recurring-buy-btc recurring-buy-eth manual-sell-btc manual-sell-eth stake-eth; do
             aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
             echo "Uploaded ${dir}-${VERSION}.zip to S3"
           done
@@ -145,4 +145,5 @@ jobs:
               RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
               RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip" \
               ManualSellBTCCodeKey="manual-sell-btc-${VERSION}.zip" \
-              ManualSellETHCodeKey="manual-sell-eth-${VERSION}.zip"
+              ManualSellETHCodeKey="manual-sell-eth-${VERSION}.zip" \
+              StakeETHCodeKey="stake-eth-${VERSION}.zip"

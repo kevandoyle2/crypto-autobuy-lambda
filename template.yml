@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy multiple Lambda functions for crypto-autobuy and autosell
+Description: Deploy multiple Lambda functions for crypto-autobuy, autosell, and staking
 
 Parameters:
   CodeBucket:
@@ -37,6 +37,10 @@ Parameters:
     Type: String
     Description: S3 key for ManualSellETH code
     Default: manual-sell-eth.zip
+  StakeETHCodeKey:
+    Type: String
+    Description: S3 key for StakeETH code
+    Default: stake-eth.zip
 
 Resources:
   LambdaExecutionRole:
@@ -162,6 +166,19 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
+  StakeETH:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: StakeETH
+      Handler: function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref StakeETHCodeKey
+      Runtime: !Ref LambdaRuntime
+      Timeout: 30
+      MemorySize: 128
+
 Outputs:
   ConvertGUSDArn:
     Value: !GetAtt ConvertGUSD.Arn
@@ -177,3 +194,5 @@ Outputs:
     Value: !GetAtt ManualSellBTC.Arn
   ManualSellETHArn:
     Value: !GetAtt ManualSellETH.Arn
+  StakeETHArn:
+    Value: !GetAtt StakeETH.Arn
