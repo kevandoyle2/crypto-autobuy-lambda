@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Deploy multiple Lambda functions for crypto-autobuy and autosell
 
 Parameters:
-  CodeBucketName:
+  CodeBucket:
     Type: String
     Description: S3 bucket containing Lambda code
   LambdaRuntime:
@@ -39,12 +39,6 @@ Parameters:
     Default: manual-sell-eth.zip
 
 Resources:
-  CodeBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref CodeBucketName
-      AccessControl: Private
-
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -79,13 +73,12 @@ Resources:
 
   ConvertGUSD:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: ConvertGUSD
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref ConvertGUSDCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -93,13 +86,12 @@ Resources:
 
   ManualBuyBTC:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualBuyBTC
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualBuyBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -107,13 +99,12 @@ Resources:
 
   ManualBuyETH:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualBuyETH
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualBuyETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -121,13 +112,12 @@ Resources:
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: RecurringBuyBTC
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref RecurringBuyBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -135,13 +125,12 @@ Resources:
 
   RecurringBuyETH:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: RecurringBuyETH
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref RecurringBuyETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -149,13 +138,12 @@ Resources:
 
   ManualSellBTC:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualSellBTC
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualSellBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -163,21 +151,18 @@ Resources:
 
   ManualSellETH:
     Type: AWS::Lambda::Function
-    DependsOn: CodeBucket
     Properties:
       FunctionName: ManualSellETH
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucketName
+        S3Bucket: !Ref CodeBucket
         S3Key: !Ref ManualSellETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
 Outputs:
-  CodeBucketName:
-    Value: !Ref CodeBucketName
   ConvertGUSDArn:
     Value: !GetAtt ConvertGUSD.Arn
   ManualBuyBTCArn:

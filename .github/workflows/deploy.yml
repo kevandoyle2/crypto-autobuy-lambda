@@ -34,22 +34,47 @@ jobs:
 
       - name: Determine latest Lambda Python runtime
         run: |
+          # List of known Lambda Python runtimes (as of June 2025, update as needed)
           KNOWN_RUNTIMES=("python3.8" "python3.9" "python3.10" "python3.11" "python3.12" "python3.13")
+          
+          # Get the latest Python version available in GitHub Actions
           PYTHON_VERSION=$(python --version | cut -d' ' -f2)
           PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
           GITHUB_LATEST="python${PYTHON_MAJOR_MINOR}"
+          
+          # Select the latest runtime supported by Lambda
           LAMBDA_RUNTIME=""
           for runtime in "${KNOWN_RUNTIMES[@]}"; do
             if [[ "$runtime" == "$GITHUB_LATEST" || "${runtime#python}" < "${GITHUB_LATEST#python}" ]]; then
               LAMBDA_RUNTIME="$runtime"
             fi
           done
+          
+          # If no match found, use the latest known Lambda runtime
           if [ -z "$LAMBDA_RUNTIME" ]; then
-            LAMBDA_RUNTIME="python3.13"
+            LAMBDA_RUNTIME="python3.13"  # Latest known as of June 2025
           fi
+          
           echo "Detected GitHub Actions Python version: $PYTHON_VERSION"
           echo "Selected Lambda runtime: $LAMBDA_RUNTIME"
           echo "LAMBDA_RUNTIME=$LAMBDA_RUNTIME" >> $GITHUB_ENV
+
+      - name: Create S3 bucket
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "Creating S3 bucket $BUCKET_NAME..."
+            aws s3 mb "s3://$BUCKET_NAME" --region us-east-1
+          else
+            echo "Bucket $BUCKET_NAME already exists."
+          fi
+
+      - name: Empty S3 bucket
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          echo "Emptying S3 bucket $BUCKET_NAME..."
+          aws s3 rm "s3://$BUCKET_NAME" --recursive
+          echo "Bucket $BUCKET_NAME emptied."
 
       - name: Generate version
         run: |
@@ -64,22 +89,28 @@ jobs:
             echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
+              # Debug: List files before installation
               echo "Files before installation:"
               ls -la
+              # Install additional dependencies from requirements.txt
               if [ -f "requirements.txt" ]; then
                 echo "Installing dependencies from requirements.txt..."
                 pip install -r requirements.txt -t .
+                # Debug: List files after installation
                 echo "Files after installation:"
                 ls -la | grep -E "requests|__pycache__"
               else
                 echo "No requirements.txt found in $dir"
               fi
+              # Verify shared directory exists at root
               if [ ! -d "../shared" ]; then
                 echo "shared directory not found at root!"
                 exit 1
               fi
+              # Zip the contents with a versioned name, including the root shared/ directory
               echo "Zipping contents..."
               zip -r "../dist/${dir}-${VERSION}.zip" . ../shared
+              # Debug: List zip contents
               unzip -l "../dist/${dir}-${VERSION}.zip"
               cd ..
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
@@ -87,47 +118,6 @@ jobs:
               echo "Directory $dir does not exist. Skipping..."
             fi
           done
-
-      - name: Deploy CloudFormation stack
-        run: |
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          VERSION=${{ env.VERSION }}
-          aws cloudformation deploy \
-            --template-file template.yml \
-            --stack-name CryptoAutobuyLambdasStack \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              CodeBucketName="$BUCKET_NAME" \
-              LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
-              ConvertGUSDCodeKey="convert-gusd-${VERSION}.zip" \
-              ManualBuyBTCCodeKey="manual-buy-btc-${VERSION}.zip" \
-              ManualBuyETHCodeKey="manual-buy-eth-${VERSION}.zip" \
-              RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
-              RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip" \
-              ManualSellBTCCodeKey="manual-sell-btc-${VERSION}.zip" \
-              ManualSellETHCodeKey="manual-sell-eth-${VERSION}.zip"
-
-      - name: Wait for bucket creation
-        run: |
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          echo "Waiting for bucket $BUCKET_NAME to be available..."
-          for i in {1..30}; do
-            if aws s3 ls "s3://$BUCKET_NAME" 2>/dev/null; then
-              echo "Bucket $BUCKET_NAME is available."
-              exit 0
-            fi
-            echo "Waiting for bucket... ($i/30)"
-            sleep 5
-          done
-          echo "Timeout waiting for bucket $BUCKET_NAME"
-          exit 1
-
-      - name: Empty S3 bucket
-        run: |
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          echo "Emptying S3 bucket $BUCKET_NAME..."
-          aws s3 rm "s3://$BUCKET_NAME" --recursive || true
-          echo "Bucket $BUCKET_NAME emptied."
 
       - name: Upload Lambda code to S3
         run: |
@@ -137,3 +127,22 @@ jobs:
             aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
             echo "Uploaded ${dir}-${VERSION}.zip to S3"
           done
+
+      - name: Deploy CloudFormation stack
+        run: |
+          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
+          VERSION=${{ env.VERSION }}
+          aws cloudformation deploy \
+            --template-file template.yml \
+            --stack-name CryptoAutobuyLambdasStack \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              CodeBucket="$BUCKET_NAME" \
+              LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
+              ConvertGUSDCodeKey="convert-gusd-${VERSION}.zip" \
+              ManualBuyBTCCodeKey="manual-buy-btc-${VERSION}.zip" \
+              ManualBuyETHCodeKey="manual-buy-eth-${VERSION}.zip" \
+              RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
+              RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip" \
+              ManualSellBTCCodeKey="manual-sell-btc-${VERSION}.zip" \
+              ManualSellETHCodeKey="manual-sell-eth-${VERSION}.zip"
