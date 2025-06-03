@@ -97,7 +97,7 @@ jobs:
             --stack-name CryptoAutobuyLambdasStack \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
-              CodeBucket="$BUCKET_NAME" \
+              CodeBucketName="$BUCKET_NAME" \
               LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
               ConvertGUSDCodeKey="convert-gusd-${VERSION}.zip" \
               ManualBuyBTCCodeKey="manual-buy-btc-${VERSION}.zip" \

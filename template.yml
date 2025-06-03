@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Deploy multiple Lambda functions for crypto-autobuy and autosell
 
 Parameters:
-  CodeBucket:
+  CodeBucketName:
     Type: String
     Description: S3 bucket containing Lambda code
   LambdaRuntime:
@@ -42,7 +42,7 @@ Resources:
   CodeBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref CodeBucket
+      BucketName: !Ref CodeBucketName
       AccessControl: Private
 
   LambdaExecutionRole:
@@ -84,7 +84,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref ConvertGUSDCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -98,7 +98,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref ManualBuyBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -112,7 +112,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref ManualBuyETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -126,7 +126,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref RecurringBuyBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -140,7 +140,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref RecurringBuyETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -154,7 +154,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref ManualSellBTCCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -168,7 +168,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref CodeBucket
+        S3Bucket: !Ref CodeBucketName
         S3Key: !Ref ManualSellETHCodeKey
       Runtime: !Ref LambdaRuntime
       Timeout: 30
@@ -177,7 +177,7 @@ Resources:
 
 Outputs:
   CodeBucketName:
-    Value: !Ref CodeBucket
+    Value: !Ref CodeBucketName
   ConvertGUSDArn:
     Value: !GetAtt ConvertGUSD.Arn
   ManualBuyBTCArn:
