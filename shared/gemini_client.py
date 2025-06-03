@@ -79,5 +79,5 @@ class GeminiClient:
 
     def stake_assets(self, staking_payload):
         """Stake assets on Gemini."""
-        endpoint = "/v1/staking/deposits"
+        endpoint = "/v1/staking/stake"
         return self.make_private_request(endpoint, staking_payload)
