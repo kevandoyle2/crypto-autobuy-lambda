@@ -89,7 +89,7 @@ def _sellEthereum(sell_size_usd):
 
 def lambda_handler(event, context):
     try:
-        result = _sellEthereum(2.5)
+        result = _sellEthereum(50)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})
