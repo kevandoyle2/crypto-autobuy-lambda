@@ -15,17 +15,48 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history to avoid sparse checkout
+
+      - name: Validate expected directories
+        run: |
+          echo "Validating expected directories:"
+          for dir in recurring-buy-btc recurring-buy-eth; do
+            if [ -d "$dir" ]; then
+              echo "Found $dir"
+              ls -la "$dir"
+            else
+              echo "ERROR: Directory $dir does not exist!"
+              exit 1
+            fi
+          done
 
       - name: Debug repository contents
         run: |
+          echo "Current working directory:"
+          pwd
           echo "Listing repository root contents:"
           ls -la
-          echo "Checking recurring-buy-eth directory:"
+          echo "Recursive directory listing:"
+          find . -maxdepth 2
+          echo "Git status:"
+          git status
+          echo "Checking recurring-buy-eth directory (case-sensitive):"
           if [ -d "recurring-buy-eth" ]; then
             ls -la recurring-buy-eth
+            echo "Contents of recurring-buy-eth/function.py:"
+            cat recurring-buy-eth/function.py || echo "function.py not found"
+            echo "Contents of recurring-buy-eth/requirements.txt:"
+            cat recurring-buy-eth/requirements.txt || echo "requirements.txt not found"
           else
             echo "recurring-buy-eth directory not found!"
+            echo "Checking for case variants:"
+            ls -la | grep -i "recurring-buy-eth" || echo "No case variants found"
+            echo "Checking all directories:"
+            find . -type d -iname "*recurring-buy-eth*"
           fi
+          echo "Checking recurring-buy-btc directory:"
+          ls -la recurring-buy-btc
 
       - name: Set up Python
         uses: actions/setup-python@v4
