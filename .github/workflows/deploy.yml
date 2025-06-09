@@ -20,7 +20,8 @@ jobs:
 
       - name: Validate expected directories
         run: |
-          echo "Validating expected directories:"
+          cd $GITHUB_WORKSPACE
+          echo "Validating expected directories in $PWD:"
           for dir in recurring-buy-btc recurring-buy-eth; do
             if [ -d "$dir" ]; then
               echo "Found $dir"
@@ -33,15 +34,15 @@ jobs:
 
       - name: Debug repository contents
         run: |
-          echo "Current working directory:"
-          pwd
+          cd $GITHUB_WORKSPACE
+          echo "Current working directory: $PWD"
           echo "Listing repository root contents:"
           ls -la
           echo "Recursive directory listing:"
           find . -maxdepth 2
           echo "Git status:"
           git status
-          echo "Checking recurring-buy-eth directory (case-sensitive):"
+          echo "Checking recurring-buy-eth directory:"
           if [ -d "recurring-buy-eth" ]; then
             ls -la recurring-buy-eth
             echo "Contents of recurring-buy-eth/function.py:"
@@ -78,6 +79,7 @@ jobs:
 
       - name: Determine latest Lambda Python runtime
         run: |
+          cd $GITHUB_WORKSPACE
           KNOWN_RUNTIMES=("python3.8" "python3.9" "python3.10" "python3.11" "python3.12" "python3.13")
           PYTHON_VERSION=$(python --version | cut -d' ' -f2)
           PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
@@ -97,6 +99,7 @@ jobs:
 
       - name: Create S3 bucket
         run: |
+          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuch'; then
             echo "Creating S3 bucket: $BUCKET_NAME..."
@@ -107,15 +110,17 @@ jobs:
 
       - name: Generate version
         run: |
+          cd $GITHUB_WORKSPACE
           echo "VERSION=$(date +%s)" >> $GITHUB_ENV
 
       - name: Package Lambda functions
         run: |
+          cd $GITHUB_WORKSPACE
           LAMBDA_DIRS=("recurring-buy-btc" "recurring-buy-eth")
           VERSION=${{ env.VERSION }}
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
-            echo "Processing $dir..."
+            echo "Processing $dir in $PWD..."
             if [ -d "$dir" ]; then
               cd "$dir"
               echo "Files before installation:"
@@ -145,16 +150,18 @@ jobs:
               cd ../../
               rm -rf dist/$dir
               unzip -l "dist/${dir}-${VERSION}.zip"
-              cd ..
+              cd $GITHUB_WORKSPACE
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
             else
-              echo "Directory $dir does not exist!"
+              echo "Directory $dir does not exist in $PWD!"
+              ls -la
               exit 1
             fi
           done
 
       - name: Upload Lambda code to S3
         run: |
+          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
           for dir in recurring-buy-btc recurring-buy-eth; do
@@ -169,6 +176,7 @@ jobs:
 
       - name: Deploy CloudFormation stack
         run: |
+          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
           aws cloudformation deploy \
