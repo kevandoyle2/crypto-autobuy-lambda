@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy Lambda functions for recurring BTC and ETH purchases with EventBridge schedules
+Description: Deploy Lambda functions for recurring BTC and ETH purchases
 
 Parameters:
   CodeBucket:
@@ -77,46 +77,8 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  RecurringBuyBTCSchedule:
-    Type: AWS::Events::Rule
-    Properties:
-      ScheduleExpression: cron(0 11 ? * SUN *)"
-      State: ENABLED
-      Targets:
-        - Arn: !GetAtt RecurringBuyBTC.Arn
-          Id: RecurringBuyBTC
-
-  RecurringBuyETHSchedule:
-    Type: AWS::Events::Rule
-    Properties:
-      ScheduleExpression: "cron(0 11 ? * SUN *)"
-      State: ENABLED
-      Targets:
-        - Arn: !GetAtt RecurringBuyETH.Arn
-          Id: RecurringBuyETH
-
-  RecurringBuyBTCPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref RecurringBuyBTC
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt RecurringBuyBTCSchedule.Arn
-
-  RecurringBuyETHPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref RecurringBuyETH
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt RecurringBuyETHSchedule.Arn
-
 Outputs:
   RecurringBuyBTCArn:
     Value: !GetAtt RecurringBuyBTC.Arn
   RecurringBuyETHArn:
     Value: !GetAtt RecurringBuyETH.Arn
-  RecurringBuyBTCScheduleArn:
-    Value: !GetAtt RecurringBuyBTCSchedule.Arn
-  RecurringBuyETHScheduleArn:
-    Value: !GetAtt RecurringBuyETHSchedule.Arn
