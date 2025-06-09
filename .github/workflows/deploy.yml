@@ -34,27 +34,19 @@ jobs:
 
       - name: Determine latest Lambda Python runtime
         run: |
-          # List of known Lambda Python runtimes (as of June 2025, update as needed)
           KNOWN_RUNTIMES=("python3.8" "python3.9" "python3.10" "python3.11" "python3.12" "python3.13")
-          
-          # Get the latest Python version available in GitHub Actions
           PYTHON_VERSION=$(python --version | cut -d' ' -f2)
           PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
           GITHUB_LATEST="python${PYTHON_MAJOR_MINOR}"
-          
-          # Select the latest runtime supported by Lambda
           LAMBDA_RUNTIME=""
           for runtime in "${KNOWN_RUNTIMES[@]}"; do
             if [[ "$runtime" == "$GITHUB_LATEST" || "${runtime#python}" < "${GITHUB_LATEST#python}" ]]; then
               LAMBDA_RUNTIME="$runtime"
             fi
           done
-          
-          # If no match found, use the latest known Lambda runtime
           if [ -z "$LAMBDA_RUNTIME" ]; then
-            LAMBDA_RUNTIME="python3.13"  # Latest known as of June 2025
+            LAMBDA_RUNTIME="python3.13"
           fi
-          
           echo "Detected GitHub Actions Python version: $PYTHON_VERSION"
           echo "Selected Lambda runtime: $LAMBDA_RUNTIME"
           echo "LAMBDA_RUNTIME=$LAMBDA_RUNTIME" >> $GITHUB_ENV
@@ -69,53 +61,45 @@ jobs:
             echo "Bucket $BUCKET_NAME already exists."
           fi
 
-      - name: Empty S3 bucket
-        run: |
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          echo "Emptying S3 bucket $BUCKET_NAME..."
-          aws s3 rm "s3://$BUCKET_NAME" --recursive
-          echo "Bucket $BUCKET_NAME emptied."
-
       - name: Generate version
         run: |
           echo "VERSION=$(date +%s)" >> $GITHUB_ENV
 
       - name: Package Lambda functions
         run: |
-          LAMBDA_DIRS=("convert-gusd" "manual-buy-btc" "manual-buy-eth" "recurring-buy-btc" "recurring-buy-eth" "manual-sell-btc" "manual-sell-eth" "stake-eth")
+          LAMBDA_DIRS=("recurring-buy-btc" "recurring-buy-eth")
           VERSION=${{ env.VERSION }}
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
             echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
-              # Debug: List files before installation
               echo "Files before installation:"
               ls -la
-              # Install additional dependencies from requirements.txt
               if [ -f "requirements.txt" ]; then
                 echo "Installing dependencies from requirements.txt..."
                 pip install -r requirements.txt -t .
-                # Debug: List files after installation
                 echo "Files after installation:"
                 ls -la | grep -E "requests|__pycache__"
               else
-                echo "No requirements.txt found in $dir"
+                echo "No requirements.txt found in $dir, creating one..."
+                echo -e "requests\nboto3" > requirements.txt
+                pip install -r requirements.txt -t .
+                echo "Files after installation:"
+                ls -la | grep -E "requests|__pycache__"
               fi
-              # Verify shared directory exists at root
               if [ ! -d "../shared" ]; then
                 echo "shared directory not found at root!"
                 exit 1
               fi
-              # Zip the contents with a versioned name, including the root shared/ directory
               echo "Zipping contents..."
               zip -r "../dist/${dir}-${VERSION}.zip" . ../shared
-              # Debug: List zip contents
               unzip -l "../dist/${dir}-${VERSION}.zip"
               cd ..
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
             else
-              echo "Directory $dir does not exist. Skipping..."
+              echo "Directory $dir does not exist!"
+              exit 1
             fi
           done
 
@@ -123,9 +107,14 @@ jobs:
         run: |
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
-          for dir in convert-gusd manual-buy-btc manual-buy-eth recurring-buy-btc recurring-buy-eth manual-sell-btc manual-sell-eth stake-eth; do
-            aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
-            echo "Uploaded ${dir}-${VERSION}.zip to S3"
+          for dir in recurring-buy-btc recurring-buy-eth; do
+            if [ -f "dist/${dir}-${VERSION}.zip" ]; then
+              aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
+              echo "Uploaded ${dir}-${VERSION}.zip to S3"
+            else
+              echo "Zip file dist/${dir}-${VERSION}.zip not found!"
+              exit 1
+            fi
           done
 
       - name: Deploy CloudFormation stack
@@ -139,11 +128,5 @@ jobs:
             --parameter-overrides \
               CodeBucket="$BUCKET_NAME" \
               LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
-              ConvertGUSDCodeKey="convert-gusd-${VERSION}.zip" \
-              ManualBuyBTCCodeKey="manual-buy-btc-${VERSION}.zip" \
-              ManualBuyETHCodeKey="manual-buy-eth-${VERSION}.zip" \
               RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
-              RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip" \
-              ManualSellBTCCodeKey="manual-sell-btc-${VERSION}.zip" \
-              ManualSellETHCodeKey="manual-sell-eth-${VERSION}.zip" \
-              StakeETHCodeKey="stake-eth-${VERSION}.zip"
+              RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip"

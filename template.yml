@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy multiple Lambda functions for crypto-autobuy, autosell, and staking
+Description: Deploy Lambda functions for recurring BTC and ETH purchases
 
 Parameters:
   CodeBucket:
@@ -9,18 +9,6 @@ Parameters:
     Type: String
     Description: Python runtime version for Lambda functions
     Default: python3.13
-  ConvertGUSDCodeKey:
-    Type: String
-    Description: S3 key for ConvertGUSD code
-    Default: convert-gusd.zip
-  ManualBuyBTCCodeKey:
-    Type: String
-    Description: S3 key for ManualBuyBTC code
-    Default: manual-buy-btc.zip
-  ManualBuyETHCodeKey:
-    Type: String
-    Description: S3 key for ManualBuyETH code
-    Default: manual-buy-eth.zip
   RecurringBuyBTCCodeKey:
     Type: String
     Description: S3 key for RecurringBuyBTC code
@@ -29,18 +17,6 @@ Parameters:
     Type: String
     Description: S3 key for RecurringBuyETH code
     Default: recurring-buy-eth.zip
-  ManualSellBTCCodeKey:
-    Type: String
-    Description: S3 key for ManualSellBTC code
-    Default: manual-sell-btc.zip
-  ManualSellETHCodeKey:
-    Type: String
-    Description: S3 key for ManualSellETH code
-    Default: manual-sell-eth.zip
-  StakeETHCodeKey:
-    Type: String
-    Description: S3 key for StakeETH code
-    Default: stake-eth.zip
 
 Resources:
   LambdaExecutionRole:
@@ -75,50 +51,11 @@ Resources:
                   - kms:Decrypt
                 Resource: "arn:aws:kms:us-east-1:137530478974:key/*"
 
-  ConvertGUSD:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ConvertGUSD
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ConvertGUSDCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
-  ManualBuyBTC:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualBuyBTC
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualBuyBTCCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
-  ManualBuyETH:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualBuyETH
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualBuyETHCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
   RecurringBuyBTC:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: RecurringBuyBTC
-      Handler: function.lambda_handler
+      Handler: buy_btc.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
@@ -131,7 +68,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: RecurringBuyETH
-      Handler: function.lambda_handler
+      Handler: buy_eth.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
@@ -140,59 +77,8 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  ManualSellBTC:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualSellBTC
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualSellBTCCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
-  ManualSellETH:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ManualSellETH
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref ManualSellETHCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
-  StakeETH:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: StakeETH
-      Handler: function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref StakeETHCodeKey
-      Runtime: !Ref LambdaRuntime
-      Timeout: 30
-      MemorySize: 128
-
 Outputs:
-  ConvertGUSDArn:
-    Value: !GetAtt ConvertGUSD.Arn
-  ManualBuyBTCArn:
-    Value: !GetAtt ManualBuyBTC.Arn
-  ManualBuyETHArn:
-    Value: !GetAtt ManualBuyETH.Arn
   RecurringBuyBTCArn:
     Value: !GetAtt RecurringBuyBTC.Arn
   RecurringBuyETHArn:
     Value: !GetAtt RecurringBuyETH.Arn
-  ManualSellBTCArn:
-    Value: !GetAtt ManualSellBTC.Arn
-  ManualSellETHArn:
-    Value: !GetAtt ManualSellETH.Arn
-  StakeETHArn:
-    Value: !GetAtt StakeETH.Arn
