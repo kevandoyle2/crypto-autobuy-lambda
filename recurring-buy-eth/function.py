@@ -22,38 +22,57 @@ def _buyEthereum(buy_size):
     public_key, private_key = get_api_keys()
     gemini = GeminiClient(public_key, private_key)
 
-    # Check USD and GUSD balances
+    # Check GUSD balance
     balances = gemini.get_balance()
-    usd_balance = 0.0
     gusd_balance = 0.0
+    usd_balance = 0.0  # For logging only
     for asset in balances:
-        if asset['currency'] == 'USD':
-            usd_balance = float(asset['available'])
-        elif asset['currency'] == 'GUSD':
+        if asset['currency'] == 'GUSD':
             gusd_balance = float(asset['available'])
+        elif asset['currency'] == 'USD':
+            usd_balance = float(asset['available'])
     
-    total_balance = usd_balance + gusd_balance
-    print(f"USD Available Balance: {usd_balance}")
-    print(f"GUSD Available Balance: {gusd_balance}")
-    print(f"Total Available Balance (USD + GUSD): {total_balance}")
+    print(f"GUSD Available Balance: ${gusd_balance}")
+    print(f"USD Available Balance (for reference): ${usd_balance}")
 
-    if total_balance < buy_size:
-        error_message = f"Insufficient balance to cover buy amount: {buy_size} USD requested but only {total_balance} (USD: {usd_balance}, GUSD: {gusd_balance}) available."
+    # Estimate fees (0.01% taker fee for stablecoin pairs)
+    fee_rate = 0.0001  # 0.01% for ETHGUSD
+    required_funds = buy_size * (1 + fee_rate)
+    print(f"Required funds (including {fee_rate*100}% fee): ${required_funds:.2f}")
+
+    # Use GUSD balance exclusively
+    if gusd_balance < required_funds:
+        error_message = f"Insufficient GUSD balance: ${gusd_balance} available, need ${required_funds:.2f}. Convert GUSD to USD manually via the Gemini web interface or fund GUSD account."
         print(error_message)
         return {"error": error_message}
+    
+    print(f"Using GUSD balance for order")
 
     # Get current ask price
-    ticker = gemini.get_ticker("ETHUSD")
+    ticker = gemini.get_ticker("ETHGUSD")
     symbol_spot_price = float(ticker['ask'])
-    print(f"Spot Ask Price: {symbol_spot_price}")
+    print(f"Spot Ask Price: ${symbol_spot_price} GUSD")
 
     tick_size = 6
     quote_currency_price_increment = 2
-    symbol = "ETHUSD"
-    
-    factor = 0.998  # slippage factor
+    symbol = "ETHGUSD"
+    min_quantity = 0.00001  # Gemini's typical minimum ETH order size
+
+    factor = 0.998  # Slippage factor
     execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
     eth_amount = round((buy_size * 0.998) / float(execution_price), tick_size)
+    
+    if eth_amount < min_quantity:
+        error_message = f"Calculated ETH amount ({eth_amount} ETH) is below minimum order size ({min_quantity} ETH)."
+        print(error_message)
+        return {"error": error_message}
+
+    order_cost = float(execution_price) * eth_amount
+    order_fee = order_cost * fee_rate
+    total_order_cost = order_cost + order_fee
+    print(f"Order: {eth_amount} ETH at ${execution_price} GUSD = ${order_cost:.2f}")
+    print(f"Estimated fee: ${order_fee:.2f}")
+    print(f"Total order cost: ${total_order_cost:.2f} GUSD")
 
     order_payload = {
         "symbol": symbol,
