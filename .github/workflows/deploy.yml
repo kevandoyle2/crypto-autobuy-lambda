@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history to avoid sparse checkout
+          fetch-depth: 0
 
       - name: Validate expected directories
         run: |
@@ -52,11 +52,14 @@ jobs:
             echo "recurring-buy-eth directory not found!"
             echo "Checking for case variants:"
             ls -la | grep -i "recurring-buy-eth" || echo "No case variants found"
-            echo "Checking all directories:"
             find . -type d -iname "*recurring-buy-eth*"
           fi
           echo "Checking recurring-buy-btc directory:"
           ls -la recurring-buy-btc
+          echo "Contents of recurring-buy-btc/function.py:"
+          cat recurring-buy-btc/function.py || echo "function.py not found"
+          echo "Contents of recurring-buy-btc/requirements.txt:"
+          cat recurring-buy-btc/requirements.txt || echo "requirements.txt not found"
 
       - name: Set up Python
         uses: actions/setup-python@v4
