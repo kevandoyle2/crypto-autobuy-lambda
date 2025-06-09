@@ -122,3 +122,17 @@ class GeminiClient:
         """Stake assets on Gemini."""
         endpoint = "/v1/staking/stake"
         return self.make_private_post_request(endpoint, staking_payload)
+
+    def get_symbol_details(self, symbol):
+        """Fetch details for a specific trading pair."""
+        endpoint = f"/v1/symbols/details/{symbol}"
+        response = requests.get(f"{self.base_url}{endpoint}")
+        print(f"Response Status Code: {response.status_code}", flush=True)
+        print(f"Response Text: {response.text}", flush=True)
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            error_message = f"HTTP Error: {e}, Response: {response.text}"
+            print(error_message, flush=True)
+            raise Exception(error_message)
+        return response.json()

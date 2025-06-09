@@ -1,6 +1,6 @@
 import json
-import os
 import boto3
+import time
 from shared.gemini_client import GeminiClient
 
 # Initialize SSM client
@@ -34,14 +34,24 @@ def _convertGUSDtoUSD():
     if gusd_balance <= 0:
         return {"message": "there is no GUSD to convert in your account"}
 
-    # Step 2: Place limit sell order for GUSD at $1.00
+    # Step 2: Check market status
+    try:
+        symbol_details = gemini.get_symbol_details("gusdusd")
+        print(f"Symbol Details: {symbol_details}")
+        if not symbol_details.get("is_trading_enabled", True):  # Adjust based on actual response
+            return {"error": "Market for gusdusd is not open"}
+    except Exception as e:
+        print(f"Error checking market status: {str(e)}")
+        return {"error": f"Failed to check market status: {str(e)}"}
+
+    # Step 3: Place limit sell order for GUSD at $1.00
     order_payload = {
-        "symbol": "GUSDUSD",
-        "amount": str(gusd_balance),
-        "price": "1.00",
+        "symbol": "gusdusd",
+        "amount": f"{gusd_balance:.8f}",
+        "price": "1.0000",
         "side": "sell",
         "type": "exchange limit",
-        "options": ["maker-or-cancel"]
+        "options": ["immediate-or-cancel"]
     }
 
     try:
@@ -49,8 +59,9 @@ def _convertGUSDtoUSD():
         print(f"Order Result: {result}")
         return result
     except Exception as e:
-        print(f"Error placing order: {str(e)}")
-        return {"error": str(e)}
+        error_message = f"Error placing order: {str(e)}"
+        print(error_message)
+        return {"error": error_message}
 
 def lambda_handler(event, context):
     try:
@@ -60,7 +71,9 @@ def lambda_handler(event, context):
             'body': json.dumps(result)
         }
     except Exception as e:
+        error_message = f"Lambda execution error: {str(e)}"
+        print(error_message)
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
+            'body': json.dumps({'error': error_message})
         }
