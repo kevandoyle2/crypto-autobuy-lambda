@@ -16,11 +16,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug repository contents
+        run: |
+          echo "Listing repository root contents:"
+          ls -la
+          echo "Checking recurring-buy-eth directory:"
+          if [ -d "recurring-buy-eth" ]; then
+            ls -la recurring-buy-eth
+          else
+            echo "recurring-buy-eth directory not found!"
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
-        id: setup-python
 
       - name: Install AWS CLI
         run: |
@@ -54,8 +64,8 @@ jobs:
       - name: Create S3 bucket
         run: |
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
-            echo "Creating S3 bucket $BUCKET_NAME..."
+          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuch'; then
+            echo "Creating S3 bucket: $BUCKET_NAME..."
             aws s3 mb "s3://$BUCKET_NAME" --region us-east-1
           else
             echo "Bucket $BUCKET_NAME already exists."
