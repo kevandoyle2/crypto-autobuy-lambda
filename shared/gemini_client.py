@@ -136,3 +136,8 @@ class GeminiClient:
             print(error_message, flush=True)
             raise Exception(error_message)
         return response.json()
+
+    def redeem_gusd(self, redemption_payload):
+        """Redeem GUSD to USD within Gemini account."""
+        endpoint = "/v1/redeem/gusd"
+        return self.make_private_post_request(endpoint, redemption_payload)

@@ -1,5 +1,4 @@
 import json
-import os
 import boto3
 from shared.gemini_client import GeminiClient
 
@@ -23,17 +22,23 @@ def _buyBitcoin(buy_size):
     public_key, private_key = get_api_keys()
     gemini = GeminiClient(public_key, private_key)
 
-    # Check USD balance first
+    # Check USD and GUSD balances
     balances = gemini.get_balance()
     usd_balance = 0.0
+    gusd_balance = 0.0
     for asset in balances:
         if asset['currency'] == 'USD':
             usd_balance = float(asset['available'])
-            break
+        elif asset['currency'] == 'GUSD':
+            gusd_balance = float(asset['available'])
+    
+    total_balance = usd_balance + gusd_balance
     print(f"USD Available Balance: {usd_balance}")
+    print(f"GUSD Available Balance: {gusd_balance}")
+    print(f"Total Available Balance (USD + GUSD): {total_balance}")
 
-    if usd_balance < buy_size:
-        error_message = f"Insufficient USD balance to cover buy amount: {buy_size} USD requested but only {usd_balance} available."
+    if total_balance < buy_size:
+        error_message = f"Insufficient balance to cover buy amount: {buy_size} USD requested but only {total_balance} (USD: {usd_balance}, GUSD: {gusd_balance}) available."
         print(error_message)
         return {"error": error_message}
 
