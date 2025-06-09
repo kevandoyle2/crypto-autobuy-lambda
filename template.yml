@@ -55,7 +55,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: RecurringBuyBTC
-      Handler: buy_btc.lambda_handler
+      Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket
@@ -68,7 +68,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: RecurringBuyETH
-      Handler: buy_eth.lambda_handler
+      Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref CodeBucket

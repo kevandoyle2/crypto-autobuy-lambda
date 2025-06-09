@@ -93,8 +93,14 @@ jobs:
                 exit 1
               fi
               echo "Zipping contents..."
-              zip -r "../dist/${dir}-${VERSION}.zip" . ../shared
-              unzip -l "../dist/${dir}-${VERSION}.zip"
+              mkdir -p ../dist/$dir
+              cp -r . ../dist/$dir/
+              cp -r ../shared ../dist/$dir/
+              cd ../dist/$dir
+              zip -r ../../dist/${dir}-${VERSION}.zip .
+              cd ../../
+              rm -rf dist/$dir
+              unzip -l "dist/${dir}-${VERSION}.zip"
               cd ..
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
             else
