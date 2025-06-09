@@ -80,7 +80,7 @@ Resources:
   RecurringBuyBTCSchedule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: "cron(0 15 * * 0 *)"  # Every Sunday at 15:00 UTC (11:00 AM EDT)
+      ScheduleExpression: cron(0 11 ? * SUN *)"
       State: ENABLED
       Targets:
         - Arn: !GetAtt RecurringBuyBTC.Arn
@@ -89,7 +89,7 @@ Resources:
   RecurringBuyETHSchedule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: "cron(0 15 * * 0 *)"  # Every Sunday at 15:00 UTC (11:00 AM EDT)
+      ScheduleExpression: "cron(0 11 ? * SUN *)"
       State: ENABLED
       Targets:
         - Arn: !GetAtt RecurringBuyETH.Arn
