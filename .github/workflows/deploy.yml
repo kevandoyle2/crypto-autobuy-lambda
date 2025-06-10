@@ -1,4 +1,4 @@
-name: Deploy Lambda with CloudFormation
+name: Deploy Lambda Functions to AWS
 
 on:
   push:
@@ -8,166 +8,31 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
+      # Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set working directory
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          echo "Working directory set to: $PWD"
-
-      - name: Validate expected directories
-        run: |
-          echo "Validating expected directories in $PWD:"
-          for dir in recurring-buy-btc recurring-buy-eth; do
-            if [ -d "$dir" ]; then
-              echo "Found $dir"
-              ls -la "$dir"
-            else
-              echo "ERROR: Directory $dir does not exist!"
-              ls -la
-              exit 1
-            fi
-          done
-
-      - name: Debug repository contents
-        run: |
-          echo "Current working directory: $PWD"
-          echo "Listing repository root contents:"
-          ls -la
-          echo "Recursive directory listing:"
-          find . -maxdepth 2
-          echo "Git status:"
-          git status
-          for dir in recurring-buy-btc recurring-buy-eth; do
-            echo "Checking $dir directory:"
-            if [ -d "$dir" ]; then
-              ls -la "$dir"
-              echo "Contents of $dir/function.py:"
-              cat "$dir/function.py" || echo "function.py not found"
-              echo "Contents of $dir/requirements.txt:"
-              cat "$dir/requirements.txt" || echo "requirements.txt not found"
-            else
-              echo "$dir directory not found!"
-              ls -la | grep -i "$dir" || echo "No case variants found"
-              find . -type d -iname "*$dir*"
-            fi
-          done
-
+      # Set up the latest Python runtime
       - name: Set up Python
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          python -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Dynamically uses the latest Python 3 version
 
-      - name: Install AWS CLI
-        run: |
-          pip install awscli
+      # Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          aws-region: us-east-1 # Change to your desired region
 
-      - name: Configure AWS credentials
+      # Install dependencies and build with SAM
+      - name: Build and Deploy with SAM
         run: |
-          cd "$GITHUB_WORKSPACE"
-          aws-actions/configure-aws-credentials@v4
-          with:
-            role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
-            aws-region: us-east-1
-
-      - name: Create S3 bucket
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuch'; then
-            echo "Creating S3 bucket: $BUCKET_NAME..."
-            aws s3 mb "s3://$BUCKET_NAME" --region us-east-1
-          else
-            echo "Bucket $BUCKET_NAME already exists."
-          fi
-
-      - name: Generate version
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          echo "VERSION=$(date +%s)" >> $GITHUB_ENV
-
-      - name: Package Lambda functions
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          LAMBDA_DIRS=("recurring-buy-btc" "recurring-buy-eth")
-          VERSION=${{ env.VERSION }}
-          mkdir -p dist
-          for dir in "${LAMBDA_DIRS[@]}"; do
-            echo "Processing $dir in $PWD..."
-            if [ -d "$dir" ]; then
-              cd "$dir"
-              echo "Files before installation:"
-              ls -la
-              if [ -f "requirements.txt" ]; then
-                echo "Installing dependencies from requirements.txt..."
-                pip install -r requirements.txt -t .
-                echo "Files after installation:"
-                ls -la | grep -E "requests|__pycache__"
-              else
-                echo "No requirements.txt found in $dir, creating one..."
-                echo "requests" > requirements.txt
-                pip install -r requirements.txt -t .
-                echo "Files after installation:"
-                ls -la | grep -E "requests|__pycache__"
-              fi
-              if [ ! -d "../shared" ]; then
-                echo "shared directory not found at root!"
-                exit 1
-              fi
-              echo "Zipping contents..."
-              mkdir -p ../dist/$dir
-              cp -r . ../dist/$dir/
-              cp -r ../shared ../dist/$dir/
-              cd ../dist/$dir
-              zip -r ../../dist/${dir}-${VERSION}.zip .
-              cd ../../
-              rm -rf dist/$dir
-              unzip -l "dist/${dir}-${VERSION}.zip"
-              echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
-              cd "$GITHUB_WORKSPACE"
-            else
-              echo "Directory $dir does not exist in $PWD!"
-              ls -la
-              exit 1
-            fi
-          done
-
-      - name: Upload Lambda code to S3
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          VERSION=${{ env.VERSION }}
-          for dir in recurring-buy-btc recurring-buy-eth; do
-            if [ -f "dist/${dir}-${VERSION}.zip" ]; then
-              aws s3 cp "dist/${dir}-${VERSION}.zip" "s3://$BUCKET_NAME/${dir}-${VERSION}.zip"
-              echo "Uploaded ${dir}-${VERSION}.zip to S3"
-            else
-              echo "Zip file dist/${dir}-${VERSION}.zip not found!"
-              exit 1
-            fi
-          done
-
-      - name: Deploy CloudFormation stack
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
-          VERSION=${{ env.VERSION }}
-          aws cloudformation deploy \
-            --template-file template.yml \
-            --stack-name CryptoAutobuyLambdasStack \
-            --capabilities CAPABILITY_IAM \
-            --parameter-overrides \
-              CodeBucket="$BUCKET_NAME" \
-              LambdaRuntime="python3.13" \
-              RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
-              RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip"
+          pip install -r recurring-buy-btc/requirements.txt
+          pip install -r recurring-buy-eth/requirements.txt
+          sam build --use-container
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas
+          # Uncomment and set your S3 bucket if needed: --s3-bucket my-sam-artifacts-bucket
+        shell: bash

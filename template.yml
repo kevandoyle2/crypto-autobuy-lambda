@@ -1,20 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: Deploy Lambda functions for recurring BTC and ETH purchases
 
 Parameters:
-  CodeBucket:
-    Type: String
-    Description: S3 bucket containing Lambda code
   LambdaRuntime:
     Type: String
     Description: Python runtime version for Lambda functions
     Default: python3.13
-  RecurringBuyBTCCodeKey:
-    Type: String
-    Description: S3 key for RecurringBuyBTC code
-  RecurringBuyETHCodeKey:
-    Type: String
-    Description: S3 key for RecurringBuyETH code
 
 Resources:
   LambdaExecutionRole:
@@ -46,27 +38,23 @@ Resources:
                   - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
 
   RecurringBuyBTC:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringBuyBTC
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref RecurringBuyBTCCodeKey
+      CodeUri: recurring-buy-btc/
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
 
   RecurringBuyETH:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringBuyETH
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref CodeBucket
-        S3Key: !Ref RecurringBuyETHCodeKey
+      CodeUri: recurring-buy-eth/
       Runtime: !Ref LambdaRuntime
       Timeout: 30
       MemorySize: 128
