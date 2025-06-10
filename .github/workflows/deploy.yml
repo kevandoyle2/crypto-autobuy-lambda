@@ -17,12 +17,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up the latest Python runtime
+      # Set up Python 3.13 runtime
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x' # Dynamically uses the latest Python 3 version
-          python-version-file: 'requirements.txt' # Optional: Use if runtime needs to match dependencies
+          python-version: '3.13' # Explicitly set to Python 3.13
 
       # Configure AWS credentials using OIDC
       - name: Configure AWS Credentials
@@ -36,9 +35,7 @@ jobs:
         run: |
           pip install -r recurring-buy-btc/requirements.txt
           pip install -r recurring-buy-eth/requirements.txt
-          RUNTIME=python$(python3 --version | awk '{print $2}' | cut -d'.' -f1,2)
-          echo "Using runtime: $RUNTIME"
-          sam build --use-container --build-image $RUNTIME
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=$RUNTIME --resolve-s3
+          sam build --use-container --build-image python3.13
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=python3.13 --resolve-s3
           # Uncomment and set your S3 bucket if needed: --s3-bucket my-sam-artifacts-bucket
         shell: bash

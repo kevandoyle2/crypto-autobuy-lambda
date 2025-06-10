@@ -2,11 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Deploy Lambda functions for recurring BTC and ETH purchases
 
-Parameters:
-  LambdaRuntime:
-    Type: String
-    Description: Python runtime version for Lambda functions
-
 Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -43,7 +38,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: recurring-buy-btc/
-      Runtime: !Ref LambdaRuntime
+      Runtime: python3.13
       Timeout: 30
       MemorySize: 128
 
@@ -54,7 +49,7 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: recurring-buy-eth/
-      Runtime: !Ref LambdaRuntime
+      Runtime: python3.13
       Timeout: 30
       MemorySize: 128
 
