@@ -22,6 +22,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x' # Dynamically uses the latest Python 3 version
+          python-version-file: 'requirements.txt' # Optional: Use if runtime needs to match dependencies
 
       # Configure AWS credentials using OIDC
       - name: Configure AWS Credentials
@@ -30,19 +31,12 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
           aws-region: us-east-1 # Change to your desired region
 
-      # Determine the latest AWS Lambda Python runtime
-      - name: Get Latest Lambda Runtime
-        run: |
-          LATEST_RUNTIME=$(aws lambda get-runtime-versions --region us-east-1 --query 'RuntimeVersions[?starts_with(Name, `python`) && Status==`Active`].Name | sort(@) | [-1]' --output text)
-          echo "LATEST_RUNTIME=$LATEST_RUNTIME" >> $GITHUB_ENV
-        shell: bash
-
       # Install dependencies and build with SAM
       - name: Build and Deploy with SAM
         run: |
           pip install -r recurring-buy-btc/requirements.txt
           pip install -r recurring-buy-eth/requirements.txt
           sam build --use-container
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=$LATEST_RUNTIME --resolve-s3
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=$(python3 --version | awk '{print $2}' | cut -d'.' -f1,2) --resolve-s3
           # Uncomment and set your S3 bucket if needed: --s3-bucket my-sam-artifacts-bucket
         shell: bash
