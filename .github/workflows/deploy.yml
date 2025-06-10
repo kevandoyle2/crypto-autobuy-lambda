@@ -35,7 +35,7 @@ jobs:
         run: |
           pip install -r recurring-buy-btc/requirements.txt
           pip install -r recurring-buy-eth/requirements.txt
-          sam build --use-container --build-image python3.13
+          sam build --use-container
           sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=python3.13 --resolve-s3
           # Uncomment and set your S3 bucket if needed: --s3-bucket my-sam-artifacts-bucket
         shell: bash
