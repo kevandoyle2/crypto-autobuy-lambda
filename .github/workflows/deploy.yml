@@ -8,6 +8,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Enable OIDC token
+      contents: read  # Required for checkout
 
     steps:
       # Checkout the repository
