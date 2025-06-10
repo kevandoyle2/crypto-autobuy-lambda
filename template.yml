@@ -69,32 +69,30 @@ Resources:
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
+      Name: RecurringBuyBTC_Schedule
+      Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
       ScheduleExpression: cron(0 16 ? * SUN *)
-      State: ENABLED
       FlexibleTimeWindow:
         Mode: OFF
+      State: ENABLED
       Target:
         Arn: !GetAtt RecurringBuyBTC.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
-      Name: RecurringBuyBTC_Schedule
-      Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
-      ScheduleExpressionTimezone: America/New_York
 
   RecurringBuyETHSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
+      Name: RecurringBuyETH_Schedule
+      Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
       ScheduleExpression: cron(0 16 ? * SUN *)
-      State: ENABLED
       FlexibleTimeWindow:
         Mode: OFF
+      State: ENABLED
       Target:
         Arn: !GetAtt RecurringBuyETH.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
-      Name: RecurringBuyETH_Schedule
-      Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
-      ScheduleExpressionTimezone: America/New_York
 
 Outputs:
   RecurringBuyBTCArn:
