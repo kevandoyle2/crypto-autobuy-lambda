@@ -71,6 +71,8 @@ Resources:
     Properties:
       ScheduleExpression: cron(0 16 ? * SUN *)
       State: ENABLED
+      FlexibleTimeWindow:
+        Mode: OFF
       Target:
         Arn: !GetAtt RecurringBuyBTC.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
@@ -84,6 +86,8 @@ Resources:
     Properties:
       ScheduleExpression: cron(0 16 ? * SUN *)
       State: ENABLED
+      FlexibleTimeWindow:
+        Mode: OFF
       Target:
         Arn: !GetAtt RecurringBuyETH.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
