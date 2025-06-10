@@ -73,7 +73,7 @@ Resources:
       Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
       ScheduleExpression: cron(0 16 ? * SUN *)
       FlexibleTimeWindow:
-        Mode: OFF
+        Mode: "OFF"
       State: ENABLED
       Target:
         Arn: !GetAtt RecurringBuyBTC.Arn
@@ -87,7 +87,7 @@ Resources:
       Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
       ScheduleExpression: cron(0 16 ? * SUN *)
       FlexibleTimeWindow:
-        Mode: OFF
+        Mode: "OFF"
       State: ENABLED
       Target:
         Arn: !GetAtt RecurringBuyETH.Arn
