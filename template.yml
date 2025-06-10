@@ -6,7 +6,6 @@ Parameters:
   LambdaRuntime:
     Type: String
     Description: Python runtime version for Lambda functions
-    Default: python3.13
 
 Resources:
   LambdaExecutionRole:
