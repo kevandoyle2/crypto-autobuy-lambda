@@ -23,10 +23,35 @@ jobs:
           for dir in recurring-buy-btc recurring-buy-eth; do
             if [ -d "$dir" ]; then
               echo "Found $dir"
+              ls -la "$dir"
             else
               echo "ERROR: Directory $dir does not exist!"
               ls -la
               exit 1
+            fi
+          done
+
+      - name: Debug repository contents
+        run: |
+          echo "Current working directory: $PWD"
+          echo "Listing repository root contents:"
+          ls -la
+          echo "Recursive directory listing:"
+          find . -maxdepth 2
+          echo "Git status:"
+          git status
+          for dir in recurring-buy-btc recurring-buy-eth; do
+            echo "Checking $dir directory:"
+            if [ -d "$dir" ]; then
+              ls -la "$dir"
+              echo "Contents of $dir/function.py:"
+              cat "$dir/function.py" || echo "function.py not found"
+              echo "Contents of $dir/requirements.txt:"
+              cat "$dir/requirements.txt" || echo "requirements.txt not found"
+            else
+              echo "$dir directory not found!"
+              ls -la | grep -i "$dir" || echo "No case variants found"
+              find . -type d -iname "*$dir*"
             fi
           done
 
@@ -66,36 +91,42 @@ jobs:
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
             echo "Processing $dir..."
-            cd "$dir"
-            echo "Files before installation:"
-            ls -la
-            if [ -f "requirements.txt" ]; then
-              echo "Installing dependencies from requirements.txt..."
-              pip install -r requirements.txt -t .
-              echo "Files after installation:"
-              ls -la | grep -E "requests|__pycache__"
+            if [ -d "$dir" ]; then
+              cd "$dir"
+              echo "Files before installation:"
+              ls -la
+              if [ -f "requirements.txt" ]; then
+                echo "Installing dependencies from requirements.txt..."
+                pip install -r requirements.txt -t .
+                echo "Files after installation:"
+                ls -la | grep -E "requests|__pycache__|boto3"
+              else
+                echo "No requirements.txt found in $dir, creating one..."
+                echo -e "requests\nboto3" > requirements.txt
+                pip install -r requirements.txt -t .
+                echo "Files after installation:"
+                ls -la | grep -E "requests|__pycache__|boto3"
+              fi
+              if [ ! -d "../shared" ]; then
+                echo "shared directory not found at root!"
+                exit 1
+              fi
+              echo "Zipping contents..."
+              mkdir -p ../dist/$dir
+              cp -r . ../dist/$dir/
+              cp -r ../shared ../dist/$dir/
+              cd ../dist/$dir
+              zip -r ../../dist/${dir}-${VERSION}.zip .
+              cd ../../
+              rm -rf dist/$dir
+              unzip -l "dist/${dir}-${VERSION}.zip"
+              echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
+              cd ..
             else
-              echo "No requirements.txt found in $dir, creating one..."
-              echo -e "requests\nboto3" > requirements.txt
-              pip install -r requirements.txt -t .
-              echo "Files after installation:"
-              ls -la | grep -E "requests|__pycache__"
-            fi
-            if [ ! -d "../shared" ]; then
-              echo "shared directory not found at root!"
+              echo "Directory $dir does not exist in $PWD!"
+              ls -la
               exit 1
             fi
-            echo "Zipping contents..."
-            mkdir -p ../dist/$dir
-            cp -r . ../dist/$dir/
-            cp -r ../shared ../dist/$dir/
-            cd ../dist/$dir
-            zip -r ../../dist/${dir}-${VERSION}.zip .
-            cd ../../
-            rm -rf dist/$dir
-            unzip -l "dist/${dir}-${VERSION}.zip"
-            cd ..
-            echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
           done
 
       - name: Upload Lambda code to S3
