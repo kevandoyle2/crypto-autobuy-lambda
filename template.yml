@@ -35,7 +35,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringBuyBTC
-      Handler: function.lambda_handler
+      Handler: recurring-buy-btc.function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
@@ -46,7 +46,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringBuyETH
-      Handler: function.lambda_handler
+      Handler: recurring-buy-eth.function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
