@@ -12,11 +12,9 @@ Parameters:
   RecurringBuyBTCCodeKey:
     Type: String
     Description: S3 key for RecurringBuyBTC code
-    Default: recurring-buy-btc.zip
   RecurringBuyETHCodeKey:
     Type: String
     Description: S3 key for RecurringBuyETH code
-    Default: recurring-buy-eth.zip
 
 Resources:
   LambdaExecutionRole:
@@ -46,10 +44,6 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
-              - Effect: Allow
-                Action:
-                  - kms:Decrypt
-                Resource: "arn:aws:kms:us-east-1:137530478974:key/*"
 
   RecurringBuyBTC:
     Type: AWS::Lambda::Function

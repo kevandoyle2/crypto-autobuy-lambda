@@ -4,7 +4,6 @@ import hashlib
 import time
 import base64
 import json
-import sys
 
 class GeminiClient:
     def __init__(self, public_key, private_key):
@@ -59,42 +58,6 @@ class GeminiClient:
             raise Exception(error_message)
         return response.json()
 
-    def make_private_get_request(self, endpoint, params=None):
-        """Make a private GET API request to Gemini."""
-        nonce = self.get_nonce()
-        payload = {
-            "request": endpoint,
-            "nonce": nonce
-        }
-        if params:
-            payload.update(params)
-        payload_json = json.dumps(payload)
-        payload_base64 = base64.b64encode(payload_json.encode()).decode()
-        timestamp = int(time.time())
-        signature = self.generate_signature(payload_base64)
-
-        headers = {
-            "X-GEMINI-APIKEY": self.public_key,
-            "X-GEMINI-PAYLOAD": payload_base64,
-            "X-GEMINI-SIGNATURE": signature,
-            "X-GEMINI-TIMESTAMP": str(timestamp),
-            "Content-Type": "text/plain",
-            "Content-Length": "0",
-            "Cache-Control": "no-cache"
-        }
-
-        print(f"Requesting {endpoint} with timestamp: {timestamp}, nonce: {nonce}")
-        response = requests.get(f"{self.base_url}{endpoint}", headers=headers)
-        print(f"Response Status Code: {response.status_code}", flush=True)
-        print(f"Response Text: {response.text}", flush=True)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            error_message = f"HTTP Error: {e}, Response: {response.text}"
-            print(error_message, flush=True)
-            raise Exception(error_message)
-        return response.json()
-
     def get_balance(self):
         """Fetch account balances from Gemini."""
         endpoint = "/v1/balances"
@@ -112,32 +75,3 @@ class GeminiClient:
         """Place an order on Gemini."""
         endpoint = "/v1/order/new"
         return self.make_private_post_request(endpoint, order_details)
-
-    def get_staking_rates(self):
-        """Fetch staking rates and provider IDs from Gemini."""
-        endpoint = "/v1/staking/rates"
-        return self.make_private_get_request(endpoint)
-
-    def stake_assets(self, staking_payload):
-        """Stake assets on Gemini."""
-        endpoint = "/v1/staking/stake"
-        return self.make_private_post_request(endpoint, staking_payload)
-
-    def get_symbol_details(self, symbol):
-        """Fetch details for a specific trading pair."""
-        endpoint = f"/v1/symbols/details/{symbol}"
-        response = requests.get(f"{self.base_url}{endpoint}")
-        print(f"Response Status Code: {response.status_code}", flush=True)
-        print(f"Response Text: {response.text}", flush=True)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            error_message = f"HTTP Error: {e}, Response: {response.text}"
-            print(error_message, flush=True)
-            raise Exception(error_message)
-        return response.json()
-
-    def redeem_gusd(self, redemption_payload):
-        """Redeem GUSD to USD within Gemini account."""
-        endpoint = "/v1/redeem/gusd"
-        return self.make_private_post_request(endpoint, redemption_payload)

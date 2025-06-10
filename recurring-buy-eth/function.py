@@ -25,28 +25,22 @@ def _buyEthereum(buy_size):
     # Check GUSD balance
     balances = gemini.get_balance()
     gusd_balance = 0.0
-    usd_balance = 0.0  # For logging only
     for asset in balances:
         if asset['currency'] == 'GUSD':
             gusd_balance = float(asset['available'])
-        elif asset['currency'] == 'USD':
-            usd_balance = float(asset['available'])
+            break
     
     print(f"GUSD Available Balance: ${gusd_balance}")
-    print(f"USD Available Balance (for reference): ${usd_balance}")
 
     # Estimate fees (0.01% taker fee for stablecoin pairs)
     fee_rate = 0.0001  # 0.01% for ETHGUSD
     required_funds = buy_size * (1 + fee_rate)
     print(f"Required funds (including {fee_rate*100}% fee): ${required_funds:.2f}")
 
-    # Use GUSD balance exclusively
     if gusd_balance < required_funds:
-        error_message = f"Insufficient GUSD balance: ${gusd_balance} available, need ${required_funds:.2f}. Convert GUSD to USD manually via the Gemini web interface or fund GUSD account."
+        error_message = f"Insufficient GUSD balance: ${gusd_balance} available, need ${required_funds:.2f}. Fund your GUSD account."
         print(error_message)
         return {"error": error_message}
-    
-    print(f"Using GUSD balance for order")
 
     # Get current ask price
     ticker = gemini.get_ticker("ETHGUSD")
@@ -56,7 +50,7 @@ def _buyEthereum(buy_size):
     tick_size = 6
     quote_currency_price_increment = 2
     symbol = "ETHGUSD"
-    min_quantity = 0.00001  # Gemini's typical minimum ETH order size
+    min_quantity = 0.00001  # Gemini's minimum ETH order size
 
     factor = 0.998  # Slippage factor
     execution_price = str(round(symbol_spot_price * factor, quote_currency_price_increment))
