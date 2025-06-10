@@ -20,21 +20,19 @@ jobs:
 
       - name: Validate expected directories
         run: |
-          cd $GITHUB_WORKSPACE
-          echo "Validating expected directories in $PWD:"
           for dir in recurring-buy-btc recurring-buy-eth; do
             if [ -d "$dir" ]; then
               echo "Found $dir"
               ls -la "$dir"
             else
               echo "ERROR: Directory $dir does not exist!"
+              ls -la
               exit 1
             fi
           done
 
       - name: Debug repository contents
         run: |
-          cd $GITHUB_WORKSPACE
           echo "Current working directory: $PWD"
           echo "Listing repository root contents:"
           ls -la
@@ -42,25 +40,20 @@ jobs:
           find . -maxdepth 2
           echo "Git status:"
           git status
-          echo "Checking recurring-buy-eth directory:"
-          if [ -d "recurring-buy-eth" ]; then
-            ls -la recurring-buy-eth
-            echo "Contents of recurring-buy-eth/function.py:"
-            cat recurring-buy-eth/function.py || echo "function.py not found"
-            echo "Contents of recurring-buy-eth/requirements.txt:"
-            cat recurring-buy-eth/requirements.txt || echo "requirements.txt not found"
-          else
-            echo "recurring-buy-eth directory not found!"
-            echo "Checking for case variants:"
-            ls -la | grep -i "recurring-buy-eth" || echo "No case variants found"
-            find . -type d -iname "*recurring-buy-eth*"
-          fi
-          echo "Checking recurring-buy-btc directory:"
-          ls -la recurring-buy-btc
-          echo "Contents of recurring-buy-btc/function.py:"
-          cat recurring-buy-btc/function.py || echo "function.py not found"
-          echo "Contents of recurring-buy-btc/requirements.txt:"
-          cat recurring-buy-btc/requirements.txt || echo "requirements.txt not found"
+          for dir in recurring-buy-btc recurring-buy-eth; do
+            echo "Checking $dir directory:"
+            if [ -d "$dir" ]; then
+              ls -la "$dir"
+              echo "Contents of $dir/function.py:"
+              cat "$dir/function.py" || echo "function.py not found"
+              echo "Contents of $dir/requirements.txt:"
+              cat "$dir/requirements.txt" || echo "requirements.txt not found"
+            else
+              echo "$dir directory not found!"
+              ls -la | grep -i "$dir" || echo "No case variants found"
+              find . -type d -iname "*$dir*"
+            fi
+          done
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -77,29 +70,8 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
           aws-region: us-east-1
 
-      - name: Determine latest Lambda Python runtime
-        run: |
-          cd $GITHUB_WORKSPACE
-          KNOWN_RUNTIMES=("python3.8" "python3.9" "python3.10" "python3.11" "python3.12" "python3.13")
-          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
-          PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f1-2)
-          GITHUB_LATEST="python${PYTHON_MAJOR_MINOR}"
-          LAMBDA_RUNTIME=""
-          for runtime in "${KNOWN_RUNTIMES[@]}"; do
-            if [[ "$runtime" == "$GITHUB_LATEST" || "${runtime#python}" < "${GITHUB_LATEST#python}" ]]; then
-              LAMBDA_RUNTIME="$runtime"
-            fi
-          done
-          if [ -z "$LAMBDA_RUNTIME" ]; then
-            LAMBDA_RUNTIME="python3.13"
-          fi
-          echo "Detected GitHub Actions Python version: $PYTHON_VERSION"
-          echo "Selected Lambda runtime: $LAMBDA_RUNTIME"
-          echo "LAMBDA_RUNTIME=$LAMBDA_RUNTIME" >> $GITHUB_ENV
-
       - name: Create S3 bucket
         run: |
-          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuch'; then
             echo "Creating S3 bucket: $BUCKET_NAME..."
@@ -110,17 +82,15 @@ jobs:
 
       - name: Generate version
         run: |
-          cd $GITHUB_WORKSPACE
           echo "VERSION=$(date +%s)" >> $GITHUB_ENV
 
       - name: Package Lambda functions
         run: |
-          cd $GITHUB_WORKSPACE
           LAMBDA_DIRS=("recurring-buy-btc" "recurring-buy-eth")
           VERSION=${{ env.VERSION }}
           mkdir -p dist
           for dir in "${LAMBDA_DIRS[@]}"; do
-            echo "Processing $dir in $PWD..."
+            echo "Processing $dir..."
             if [ -d "$dir" ]; then
               cd "$dir"
               echo "Files before installation:"
@@ -129,13 +99,13 @@ jobs:
                 echo "Installing dependencies from requirements.txt..."
                 pip install -r requirements.txt -t .
                 echo "Files after installation:"
-                ls -la | grep -E "requests|__pycache__"
+                ls -la | grep -E "requests|__pycache__|boto3"
               else
                 echo "No requirements.txt found in $dir, creating one..."
                 echo -e "requests\nboto3" > requirements.txt
                 pip install -r requirements.txt -t .
                 echo "Files after installation:"
-                ls -la | grep -E "requests|__pycache__"
+                ls -la | grep -E "requests|__pycache__|boto3"
               fi
               if [ ! -d "../shared" ]; then
                 echo "shared directory not found at root!"
@@ -150,8 +120,8 @@ jobs:
               cd ../../
               rm -rf dist/$dir
               unzip -l "dist/${dir}-${VERSION}.zip"
-              cd $GITHUB_WORKSPACE
               echo "Packaged $dir into dist/${dir}-${VERSION}.zip"
+              cd ..
             else
               echo "Directory $dir does not exist in $PWD!"
               ls -la
@@ -161,7 +131,6 @@ jobs:
 
       - name: Upload Lambda code to S3
         run: |
-          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
           for dir in recurring-buy-btc recurring-buy-eth; do
@@ -176,7 +145,6 @@ jobs:
 
       - name: Deploy CloudFormation stack
         run: |
-          cd $GITHUB_WORKSPACE
           BUCKET_NAME="crypto-autobuy-lambdas-${{ secrets.AWS_ACCOUNT_ID }}"
           VERSION=${{ env.VERSION }}
           aws cloudformation deploy \
@@ -185,6 +153,6 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               CodeBucket="$BUCKET_NAME" \
-              LambdaRuntime="${{ env.LAMBDA_RUNTIME }}" \
+              LambdaRuntime="python3.13" \
               RecurringBuyBTCCodeKey="recurring-buy-btc-${VERSION}.zip" \
               RecurringBuyETHCodeKey="recurring-buy-eth-${VERSION}.zip"
