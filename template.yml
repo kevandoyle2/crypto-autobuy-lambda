@@ -30,13 +30,16 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                  - events:PutRule
+                  - events:PutTargets
+                Resource: '*'
+                # Note: Restrict this resource ARN to specific EventBridge rules if possible for security
 
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: python3.13
-      BuildProperties:
-        Dependencies: recurring-buy-btc/requirements.txt
     Properties:
       FunctionName: RecurringBuyBTC
       Handler: recurring-buy-btc.function.lambda_handler
@@ -45,13 +48,17 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
+    Events:
+      ScheduleRule:
+        Type: Schedule
+        Properties:
+          Schedule: cron(0 16 ? * SUN *)
+          Name: RecurringBuyBTC_Schedule
+          Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
+          Enabled: true
 
   RecurringBuyETH:
     Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: python3.13
-      BuildProperties:
-        Dependencies: recurring-buy-eth/requirements.txt
     Properties:
       FunctionName: RecurringBuyETH
       Handler: recurring-buy-eth.function.lambda_handler
@@ -60,6 +67,14 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
+    Events:
+      ScheduleRule:
+        Type: Schedule
+        Properties:
+          Schedule: cron(0 16 ? * SUN *)
+          Name: RecurringBuyETH_Schedule
+          Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
+          Enabled: true
 
 Outputs:
   RecurringBuyBTCArn:
