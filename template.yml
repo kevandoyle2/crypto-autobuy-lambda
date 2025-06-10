@@ -32,11 +32,17 @@ Resources:
                   - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
               - Effect: Allow
                 Action:
-                  - events:PutEvents
-                  - events:PutRule
-                  - events:PutTargets
+                  - scheduler:CreateSchedule
+                  - scheduler:ListSchedules
+                  - scheduler:GetSchedule
+                  - scheduler:UpdateSchedule
+                  - scheduler:DeleteSchedule
+                  - scheduler:CreateScheduleGroup
+                  - scheduler:ListScheduleGroups
+                  - scheduler:GetScheduleGroup
+                  - scheduler:DeleteScheduleGroup
                 Resource: '*'
-                # Note: Restrict this resource ARN to specific EventBridge rules if possible for security
+                # Note: Restrict Resource ARNs to specific schedules if possible for security
 
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
@@ -48,14 +54,6 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
-    Events:
-      ScheduleRule:
-        Type: Schedule
-        Properties:
-          Schedule: cron(0 16 ? * SUN *)
-          Name: RecurringBuyBTC_Schedule
-          Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
-          Enabled: true
 
   RecurringBuyETH:
     Type: AWS::Serverless::Function
@@ -67,14 +65,32 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
-    Events:
-      ScheduleRule:
-        Type: Schedule
-        Properties:
-          Schedule: cron(0 16 ? * SUN *)
-          Name: RecurringBuyETH_Schedule
-          Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
-          Enabled: true
+
+  RecurringBuyBTCSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      ScheduleExpression: cron(0 16 ? * SUN *)
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RecurringBuyBTC.Arn
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: '{}'
+      Name: RecurringBuyBTC_Schedule
+      Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
+      ScheduleExpressionTimezone: America/New_York
+
+  RecurringBuyETHSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      ScheduleExpression: cron(0 16 ? * SUN *)
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RecurringBuyETH.Arn
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: '{}'
+      Name: RecurringBuyETH_Schedule
+      Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
+      ScheduleExpressionTimezone: America/New_York
 
 Outputs:
   RecurringBuyBTCArn:
