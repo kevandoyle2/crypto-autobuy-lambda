@@ -31,6 +31,16 @@ Resources:
                 Resource:
                   - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
 
+  SharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SharedLayer
+      Description: Shared code including gemini_client.py
+      ContentUri: shared/
+      CompatibleRuntimes:
+        - python3.13
+      RetentionPolicy: Retain
+
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
     Properties:
@@ -38,6 +48,8 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: recurring-buy-btc/
+      Layers:
+        - !Ref SharedLayer
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
@@ -49,6 +61,8 @@ Resources:
       Handler: function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: recurring-buy-eth/
+      Layers:
+        - !Ref SharedLayer
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
