@@ -30,7 +30,14 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
           aws-region: us-east-1 # Change to your desired region
 
-      # Install dependencies and build with SAM
+      # Install dependencies into build directory
+      - name: Install Dependencies
+        run: |
+          python3 -m pip install -r recurring-buy-btc/requirements.txt -t .
+          python3 -m pip install -r recurring-buy-eth/requirements.txt -t .
+        shell: bash
+
+      # Build and deploy with SAM
       - name: Build and Deploy with SAM
         run: |
           sam build --use-container
