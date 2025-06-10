@@ -33,6 +33,10 @@ Resources:
 
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.13
+      BuildProperties:
+        Dependencies: recurring-buy-btc/requirements.txt
     Properties:
       FunctionName: RecurringBuyBTC
       Handler: recurring-buy-btc.function.lambda_handler
@@ -44,6 +48,10 @@ Resources:
 
   RecurringBuyETH:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.13
+      BuildProperties:
+        Dependencies: recurring-buy-eth/requirements.txt
     Properties:
       FunctionName: RecurringBuyETH
       Handler: recurring-buy-eth.function.lambda_handler
