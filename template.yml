@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda functions for recurring BTC, ETH purchases, and ETH staking
+Description: Deploy Lambda functions for recurring BTC and ETH purchases
 
 Resources:
   LambdaExecutionRole:
@@ -68,17 +68,6 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  RecurringStakeETH:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: RecurringStakeETH
-      Handler: stake-eth.function.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      CodeUri: .
-      Runtime: python3.13
-      Timeout: 30
-      MemorySize: 128
-
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
@@ -107,24 +96,8 @@ Resources:
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
 
-  RecurringStakeETHSchedule:
-    Type: AWS::Scheduler::Schedule
-    Properties:
-      Name: RecurringStakeETH_Schedule
-      Description: Invoke RecurringStakeETH every Monday at 11 AM EST
-      ScheduleExpression: cron(0 15 ? * MON *)
-      FlexibleTimeWindow:
-        Mode: "OFF"
-      State: ENABLED
-      Target:
-        Arn: !GetAtt RecurringStakeETH.Arn
-        RoleArn: !GetAtt LambdaExecutionRole.Arn
-        Input: '{}'
-
 Outputs:
   RecurringBuyBTCArn:
     Value: !GetAtt RecurringBuyBTC.Arn
   RecurringBuyETHArn:
     Value: !GetAtt RecurringBuyETH.Arn
-  RecurringStakeETHArn:
-    Value: !GetAtt RecurringStakeETH.Arn

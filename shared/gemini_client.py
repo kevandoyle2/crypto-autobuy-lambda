@@ -58,19 +58,6 @@ class GeminiClient:
             raise Exception(error_message)
         return response.json()
 
-    def make_public_get_request(self, endpoint):
-        """Make a public GET API request to Gemini."""
-        response = requests.get(f"{self.base_url}{endpoint}")
-        print(f"Requesting {endpoint}, Response Status Code: {response.status_code}", flush=True)
-        print(f"Response Text: {response.text}", flush=True)
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            error_message = f"HTTP Error: {e}, Response: {response.text}"
-            print(error_message, flush=True)
-            raise Exception(error_message)
-        return response.json()
-
     def get_balance(self):
         """Fetch account balances from Gemini."""
         endpoint = "/v1/balances"
@@ -80,19 +67,11 @@ class GeminiClient:
     def get_ticker(self, symbol):
         """Fetch ticker data for a given symbol (public endpoint)."""
         endpoint = f"/v2/ticker/{symbol}"
-        return self.make_public_get_request(endpoint)
+        response = requests.get(f"{self.base_url}{endpoint}")
+        response.raise_for_status()
+        return response.json()
 
     def place_order(self, order_details):
         """Place an order on Gemini."""
         endpoint = "/v1/order/new"
         return self.make_private_post_request(endpoint, order_details)
-
-    def get_staking_rates(self):
-        """Fetch staking rates from Gemini."""
-        endpoint = "/v1/staking/rates"
-        return self.make_public_get_request(endpoint)
-
-    def stake_assets(self, staking_payload):
-        """Stake assets on Gemini."""
-        endpoint = "/v1/staking/stake"
-        return self.make_private_post_request(endpoint, staking_payload)
