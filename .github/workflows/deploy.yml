@@ -30,12 +30,15 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
           aws-region: us-east-1 # Change to your desired region
 
-      # Install dependencies into build directory
+      # Install dependencies into a temporary directory
       - name: Install Dependencies
         run: |
-          python3 -m pip install -r recurring-buy-btc/requirements.txt -t . --upgrade
-          python3 -m pip install -r recurring-buy-eth/requirements.txt -t . --upgrade
-          python3 -m pip install -r stake_eth/requirements.txt -t . --upgrade
+          TEMP_DIR=$(mktemp -d)
+          python3 -m pip install -r recurring-buy-btc/requirements.txt -t "$TEMP_DIR"
+          python3 -m pip install -r recurring-buy-eth/requirements.txt -t "$TEMP_DIR"
+          python3 -m pip install -r stake-eth/requirements.txt -t "$TEMP_DIR"
+          cp -r "$TEMP_DIR"/* .
+          rm -rf "$TEMP_DIR"
         shell: bash
 
       # Build and deploy with SAM

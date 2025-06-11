@@ -72,7 +72,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringStakeETH
-      Handler: stake_eth.function.lambda_handler
+      Handler: stake-eth.function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
@@ -84,7 +84,7 @@ Resources:
     Properties:
       Name: RecurringBuyBTC_Schedule
       Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 16 ? * SUN *)
+      ScheduleExpression: cron(0 15 ? * SUN *)
       FlexibleTimeWindow:
         Mode: "OFF"
       State: ENABLED
@@ -98,7 +98,7 @@ Resources:
     Properties:
       Name: RecurringBuyETH_Schedule
       Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 16 ? * SUN *)
+      ScheduleExpression: cron(0 15 ? * SUN *)
       FlexibleTimeWindow:
         Mode: "OFF"
       State: ENABLED
