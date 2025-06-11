@@ -33,9 +33,9 @@ jobs:
       # Install dependencies into build directory
       - name: Install Dependencies
         run: |
-          python3 -m pip install -r recurring-buy-btc/requirements.txt -t .
-          python3 -m pip install -r recurring-buy-eth/requirements.txt -t .
-          python3 -m pip install -r stake_eth/requirements.txt -t . # Add dependencies for staking function
+          python3 -m pip install -r recurring-buy-btc/requirements.txt -t . --upgrade
+          python3 -m pip install -r recurring-buy-eth/requirements.txt -t . --upgrade
+          python3 -m pip install -r stake_eth/requirements.txt -t . --upgrade
         shell: bash
 
       # Build and deploy with SAM

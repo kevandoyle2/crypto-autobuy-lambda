@@ -72,7 +72,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringStakeETH
-      Handler: stake_eth.function.lambda_handler # Assuming the file is named stake_eth.py
+      Handler: stake_eth.function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
@@ -111,7 +111,7 @@ Resources:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringStakeETH_Schedule
-      Description: Invoke RecurringStakeETH every Sunday at 11 AM EST
+      Description: Invoke RecurringStakeETH every Monday at 11 AM EST
       ScheduleExpression: cron(0 15 ? * MON *)
       FlexibleTimeWindow:
         Mode: "OFF"
