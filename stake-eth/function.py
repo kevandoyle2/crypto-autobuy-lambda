@@ -45,18 +45,18 @@ def _stakeEthereum():
     try:
         staking_rates = gemini.get_staking_rates()
     except Exception as e:
-        error_message = f"Failed to retrieve staking rates: {str(e)}"
-        print(error_message)
+        error_message = str(e)
+        if "EarnApiDisabled" in error_message:
+            print("Warning: Gemini Earn API is temporarily disabled. Skipping staking.")
+            return {"message": "Staking skipped due to disabled Earn API"}
+        print(f"Failed to retrieve staking rates: {error_message}")
         return {"error": error_message}
 
     eth_provider_id = None
-    # The response is a dict with a UUID key mapping to another dict with currency details
     if staking_rates:
-        # Get the first (and likely only) UUID key
         uuid_key = next(iter(staking_rates), None)
         if uuid_key:
             rates_by_currency = staking_rates[uuid_key]
-            # Look for ETH details
             if "ETH" in rates_by_currency:
                 eth_provider_id = rates_by_currency["ETH"].get('providerId')
 
