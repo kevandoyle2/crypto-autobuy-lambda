@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 -m pip install -r recurring-buy-btc/requirements.txt -t .
           python3 -m pip install -r recurring-buy-eth/requirements.txt -t .
+          python3 -m pip install -r stake_eth/requirements.txt -t . # Add dependencies for staking function
         shell: bash
 
       # Build and deploy with SAM
