@@ -112,7 +112,7 @@ Resources:
     Properties:
       Name: RecurringStakeETH_Schedule
       Description: Invoke RecurringStakeETH every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 16 ? * SUN *)
+      ScheduleExpression: cron(0 15 ? * MON *)
       FlexibleTimeWindow:
         Mode: "OFF"
       State: ENABLED
