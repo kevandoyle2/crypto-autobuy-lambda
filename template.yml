@@ -31,7 +31,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource:
-                  - "arn:aws:ssm:us-east-1:137530478974:parameter/GeminiApiKeys"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/GeminiApiKeys"
               - Effect: Allow
                 Action:
                   - scheduler:CreateSchedule
@@ -44,12 +44,6 @@ Resources:
                   - scheduler:GetScheduleGroup
                   - scheduler:DeleteScheduleGroup
                 Resource: '*'
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource:
-                  - !GetAtt RecurringBuyBTC.Arn
-                  - !GetAtt RecurringBuyETH.Arn
 
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
@@ -72,6 +66,22 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
+
+  RecurringBuyBTCPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyBTC.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
+
+  RecurringBuyETHPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyETH.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
 
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
