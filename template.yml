@@ -44,7 +44,12 @@ Resources:
                   - scheduler:GetScheduleGroup
                   - scheduler:DeleteScheduleGroup
                 Resource: '*'
-                # Note: Restrict Resource ARNs to specific schedules if possible for security
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt RecurringBuyBTC.Arn
+                  - !GetAtt RecurringBuyETH.Arn
 
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
@@ -73,7 +78,8 @@ Resources:
     Properties:
       Name: RecurringBuyBTC_Schedule
       Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 15 ? * SUN *)
+      ScheduleExpression: cron(0 11 ? * SUN *)
+      ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
       State: ENABLED
@@ -87,7 +93,8 @@ Resources:
     Properties:
       Name: RecurringBuyETH_Schedule
       Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 15 ? * SUN *)
+      ScheduleExpression: cron(0 11 ? * SUN *)
+      ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
       State: ENABLED
