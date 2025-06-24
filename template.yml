@@ -78,14 +78,14 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  # Schedule for invoking BTC Lambda at 5:35 PM EDT on June 24, 2025
+  # Schedule for invoking BTC Lambda every Sunday at 11 AM EST
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyBTC_Schedule
-      Description: One-time test for RecurringBuyBTC at 5:35 PM EDT on June 24, 2025
+      Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
       GroupName: default
-      ScheduleExpression: cron(35 17 24 6 ? 2025)
+      ScheduleExpression: cron(0 11 ? * SUN *)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
@@ -95,14 +95,14 @@ Resources:
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
 
-  # Schedule for invoking ETH Lambda at 5:35 PM EDT on June 24, 2025
+  # Schedule for invoking ETH Lambda every Sunday at 11 AM EST
   RecurringBuyETHSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyETH_Schedule
-      Description: One-time test for RecurringBuyETH at 5:35 PM EDT on June 24, 2025
+      Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
       GroupName: default
-      ScheduleExpression: cron(35 17 24 6 ? 2025)
+      ScheduleExpression: cron(0 11 ? * SUN *)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
