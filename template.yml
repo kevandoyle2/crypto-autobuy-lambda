@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda functions for recurring BTC and ETH purchases
+Description: Deploy Lambda functions for recurring BTC and ETH purchases with EventBridge Scheduler
 
 Resources:
+  # IAM Role for Lambda and Scheduler
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -20,18 +21,21 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # CloudWatch Logs permissions for Lambda
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
+              # SSM Parameter Store permissions for Gemini API keys
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
                 Resource:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/GeminiApiKeys"
+              # EventBridge Scheduler permissions
               - Effect: Allow
                 Action:
                   - scheduler:CreateSchedule
@@ -44,7 +48,21 @@ Resources:
                   - scheduler:GetScheduleGroup
                   - scheduler:DeleteScheduleGroup
                 Resource: '*'
+              # Explicit Lambda invocation permissions
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt RecurringBuyBTC.Arn
+                  - !GetAtt RecurringBuyETH.Arn
 
+  # Explicitly define the default schedule group
+  DefaultScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: default
+
+  # Lambda function for recurring BTC purchases
   RecurringBuyBTC:
     Type: AWS::Serverless::Function
     Properties:
@@ -56,6 +74,7 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
+  # Lambda function for recurring ETH purchases
   RecurringBuyETH:
     Type: AWS::Serverless::Function
     Properties:
@@ -67,6 +86,7 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
+  # Permission for Scheduler to invoke BTC Lambda
   RecurringBuyBTCPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -75,6 +95,7 @@ Resources:
       Principal: scheduler.amazonaws.com
       SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
 
+  # Permission for Scheduler to invoke ETH Lambda
   RecurringBuyETHPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -83,12 +104,14 @@ Resources:
       Principal: scheduler.amazonaws.com
       SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
 
+  # Schedule for invoking BTC Lambda every Sunday at 11 AM EST
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyBTC_Schedule
       Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 11 ? * SUN *)
+      GroupName: default
+      ScheduleExpression: cron(25 17 24 6 ? 2025)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
@@ -98,12 +121,14 @@ Resources:
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
 
+  # Schedule for invoking ETH Lambda every Sunday at 11 AM EST
   RecurringBuyETHSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyETH_Schedule
       Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
-      ScheduleExpression: cron(0 11 ? * SUN *)
+      GroupName: default
+      ScheduleExpression: cron(25 17 24 6 ? 2025)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
