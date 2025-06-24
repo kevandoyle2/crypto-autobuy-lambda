@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda functions for recurring BTC and ETH purchases with EventBridge Scheduler
+Description: Deploy Lambda functions for recurring BTC and ETH purchases with EventBridge Scheduler and test schedules
 
 Resources:
   # IAM Role for Lambda and Scheduler
@@ -48,13 +48,11 @@ Resources:
                   - scheduler:GetScheduleGroup
                   - scheduler:DeleteScheduleGroup
                 Resource: '*'
-              # Explicit Lambda invocation permissions
+              # Wildcard Lambda invocation permissions to break circular dependency
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
-                Resource:
-                  - !GetAtt RecurringBuyBTC.Arn
-                  - !GetAtt RecurringBuyETH.Arn
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
 
   # Explicitly define the default schedule group
   DefaultScheduleGroup:
@@ -86,24 +84,6 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  # Permission for Scheduler to invoke BTC Lambda
-  RecurringBuyBTCPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt RecurringBuyBTC.Arn
-      Action: lambda:InvokeFunction
-      Principal: scheduler.amazonaws.com
-      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
-
-  # Permission for Scheduler to invoke ETH Lambda
-  RecurringBuyETHPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt RecurringBuyETH.Arn
-      Action: lambda:InvokeFunction
-      Principal: scheduler.amazonaws.com
-      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
-
   # Schedule for invoking BTC Lambda every Sunday at 11 AM EST
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
@@ -111,7 +91,7 @@ Resources:
       Name: RecurringBuyBTC_Schedule
       Description: Invoke RecurringBuyBTC every Sunday at 11 AM EST
       GroupName: default
-      ScheduleExpression: cron(25 17 24 6 ? 2025)
+      ScheduleExpression: cron(0 11 ? * SUN *)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
@@ -128,7 +108,7 @@ Resources:
       Name: RecurringBuyETH_Schedule
       Description: Invoke RecurringBuyETH every Sunday at 11 AM EST
       GroupName: default
-      ScheduleExpression: cron(25 17 24 6 ? 2025)
+      ScheduleExpression: cron(0 11 ? * SUN *)
       ScheduleExpressionTimezone: America/New_York
       FlexibleTimeWindow:
         Mode: "OFF"
@@ -137,6 +117,88 @@ Resources:
         Arn: !GetAtt RecurringBuyETH.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
         Input: '{}'
+
+  # Test schedule for invoking BTC Lambda at 5:30 PM EDT on June 24, 2025
+  TestRecurringBuyBTCSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: TestRecurringBuyBTC_Schedule
+      Description: One-time test for RecurringBuyBTC at 5:30 PM EDT on June 24, 2025
+      GroupName: default
+      ScheduleExpression: cron(30 17 24 6 ? 2025)
+      ScheduleExpressionTimezone: America/New_York
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RecurringBuyBTC.Arn
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: '{}'
+
+  # Test schedule for invoking ETH Lambda at 5:30 PM EDT on June 24, 2025
+  TestRecurringBuyETHSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: TestRecurringBuyETH_Schedule
+      Description: One-time test for RecurringBuyETH at 5:30 PM EDT on June 24, 2025
+      GroupName: default
+      ScheduleExpression: cron(30 17 24 6 ? 2025)
+      ScheduleExpressionTimezone: America/New_York
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RecurringBuyETH.Arn
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: '{}'
+
+  # Permission for Scheduler to invoke BTC Lambda (recurring)
+  RecurringBuyBTCPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyBTC.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
+    DependsOn:
+      - RecurringBuyBTCSchedule
+      - RecurringBuyBTC
+
+  # Permission for Scheduler to invoke ETH Lambda (recurring)
+  RecurringBuyETHPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyETH.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
+    DependsOn:
+      - RecurringBuyETHSchedule
+      - RecurringBuyETH
+
+  # Permission for Scheduler to invoke BTC Lambda (test)
+  TestRecurringBuyBTCPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyBTC.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/TestRecurringBuyBTC_Schedule
+    DependsOn:
+      - TestRecurringBuyBTCSchedule
+      - RecurringBuyBTC
+
+  # Permission for Scheduler to invoke ETH Lambda (test)
+  TestRecurringBuyETHPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RecurringBuyETH.Arn
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/TestRecurringBuyETH_Schedule
+    DependsOn:
+      - TestRecurringBuyETHSchedule
+      - RecurringBuyETH
 
 Outputs:
   RecurringBuyBTCArn:
