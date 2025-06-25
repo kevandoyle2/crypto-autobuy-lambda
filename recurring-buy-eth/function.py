@@ -2,6 +2,9 @@ import json
 import boto3
 from shared.gemini_client import GeminiClient
 
+# Configuration
+ETH_BUY_AMOUNT = 27.2  # Configurable buy amount in USD
+
 # Initialize SSM client
 ssm_client = boto3.client('ssm')
 
@@ -95,7 +98,7 @@ def _buyEthereum(buy_size):
 
 def lambda_handler(event, context):
     try:
-        result = _buyEthereum(27.2)
+        result = _buyEthereum(ETH_BUY_AMOUNT)
         return {
             'statusCode': 200,
             'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})
