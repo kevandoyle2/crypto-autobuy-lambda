@@ -3,7 +3,7 @@ import boto3
 from shared.gemini_client import GeminiClient
 
 # Configuration
-BTC_BUY_AMOUNT = 52.8  # Configurable buy amount in USD
+BTC_BUY_AMOUNT = 52.8
 
 # Initialize SSM client
 ssm_client = boto3.client('ssm')
