@@ -70,12 +70,12 @@ Resources:
       Timeout: 30
       MemorySize: 128
 
-  # Schedule for invoking BTC purchases
-  RecurringBuyBTCSchedule:
+  # Schedule for invoking recurring crypto purchases
+  RecurringBuyCryptoSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
-      Name: RecurringBuyBTC_Schedule
-      Description: Invoke RecurringBuyCrypto for BTC
+      Name: RecurringBuyCrypto_Schedule
+      Description: Invoke RecurringBuyCrypto for BTC and ETH
       GroupName: default
       ScheduleExpression: !Ref PurchaseSchedule
       ScheduleExpressionTimezone: America/New_York
@@ -85,47 +85,18 @@ Resources:
       Target:
         Arn: !GetAtt RecurringBuyCrypto.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
-        Input: '{"asset":"BTC"}'
+        Input: '{}'
 
-  # Schedule for invoking ETH purchases
-  RecurringBuyETHSchedule:
-    Type: AWS::Scheduler::Schedule
-    Properties:
-      Name: RecurringBuyETH_Schedule
-      Description: Invoke RecurringBuyCrypto for ETH
-      GroupName: default
-      ScheduleExpression: !Ref PurchaseSchedule
-      ScheduleExpressionTimezone: America/New_York
-      FlexibleTimeWindow:
-        Mode: "OFF"
-      State: ENABLED
-      Target:
-        Arn: !GetAtt RecurringBuyCrypto.Arn
-        RoleArn: !GetAtt LambdaExecutionRole.Arn
-        Input: '{"asset":"ETH"}'
-
-  # Permission for Scheduler to invoke RecurringBuyCrypto for BTC
-  RecurringBuyCryptoPermissionBTC:
+  # Permission for Scheduler to invoke RecurringBuyCrypto
+  RecurringBuyCryptoPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt RecurringBuyCrypto.Arn
       Action: lambda:InvokeFunction
       Principal: scheduler.amazonaws.com
-      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyCrypto_Schedule
     DependsOn:
-      - RecurringBuyBTCSchedule
-      - RecurringBuyCrypto
-
-  # Permission for Scheduler to invoke RecurringBuyCrypto for ETH
-  RecurringBuyCryptoPermissionETH:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !GetAtt RecurringBuyCrypto.Arn
-      Action: lambda:InvokeFunction
-      Principal: scheduler.amazonaws.com
-      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
-    DependsOn:
-      - RecurringBuyETHSchedule
+      - RecurringBuyCryptoSchedule
       - RecurringBuyCrypto
 
 Outputs:

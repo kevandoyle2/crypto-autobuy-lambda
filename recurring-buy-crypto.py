@@ -12,6 +12,13 @@ BUY_CONFIG = {
         "tick_size": 8,
         "min_quantity": 0.0001,
         "slippage_factor": 0.999
+    },
+    "ETH": {
+        "amount": 27.2,
+        "symbol": "ETHGUSD",
+        "tick_size": 6,
+        "min_quantity": 0.00001,
+        "slippage_factor": 0.998
     }
 }
 
@@ -117,30 +124,64 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
 
 def lambda_handler(event, context):
     try:
-        asset = event.get('asset', 'BTC')  # Default to BTC if not specified
-        if asset not in BUY_CONFIG:
-            error_message = f"Invalid asset: {asset}. Supported assets: {list(BUY_CONFIG.keys())}"
-            logger.error(error_message)
+        results = {}
+        total_required_funds = sum(config['amount'] * (1 + 0.0001) for config in BUY_CONFIG.values())
+        public_key, private_key = get_api_keys()
+        gemini = GeminiClient(public_key, private_key)
+
+        # Check total GUSD balance for all assets
+        try:
+            balances = gemini.get_balance()
+            gusd_balance = 0.0
+            for asset_info in balances:
+                if asset_info['currency'] == 'GUSD':
+                    gusd_balance = float(asset_info['available'])
+                    break
+            logger.info(f"GUSD Available Balance: ${gusd_balance}")
+            if gusd_balance < total_required_funds:
+                error_message = f"Insufficient GUSD balance for all purchases: ${gusd_balance} available, need ${total_required_funds:.2f}. Fund your GUSD account."
+                logger.error(error_message)
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': error_message})
+                }
+        except requests.exceptions.HTTPError as http_err:
+            try:
+                error_resp = http_err.response.json()
+                error_msg = error_resp.get('reason') or error_resp.get('message') or str(error_resp)
+                if error_resp.get('reason') == "ApiKeyIpFilteringFailure":
+                    error_message = "API key blocked due to IP filtering. Update Gemini IP allowlist or disable IP restrictions."
+                    logger.error(error_message)
+                    return {
+                        'statusCode': 400,
+                        'body': json.dumps({'error': error_message})
+                    }
+            except Exception:
+                error_msg = str(http_err)
+            logger.error(f"Balance check failed: {error_msg}")
             return {
                 'statusCode': 400,
-                'body': json.dumps({'error': error_message})
+                'body': json.dumps({'error': error_msg})
             }
 
-        config = BUY_CONFIG[asset]
-        result = buy_crypto(
-            asset=asset,
-            buy_size=config['amount'],
-            symbol=config['symbol'],
-            tick_size=config['tick_size'],
-            min_quantity=config['min_quantity'],
-            slippage_factor=config['slippage_factor']
-        )
+        # Process each asset
+        for asset, config in BUY_CONFIG.items():
+            result = buy_crypto(
+                asset=asset,
+                buy_size=config['amount'],
+                symbol=config['symbol'],
+                tick_size=config['tick_size'],
+                min_quantity=config['min_quantity'],
+                slippage_factor=config['slippage_factor']
+            )
+            results[asset] = result
+
         return {
             'statusCode': 200,
-            'body': json.dumps(result if isinstance(result, dict) else {'message': 'End of script'})
+            'body': json.dumps(results if any(isinstance(r, dict) and 'error' not in r for r in results.values()) else {'message': 'End of script'})
         }
     except Exception as e:
-        logger.error(f"Lambda execution failed for {asset}: {str(e)}")
+        logger.error(f"Lambda execution failed: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
