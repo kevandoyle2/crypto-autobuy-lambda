@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda functions for recurring BTC and ETH purchases with EventBridge Scheduler
+Description: Deploy Lambda functions for recurring and manual BTC and ETH purchases with EventBridge Scheduler
 
 Parameters:
   PurchaseSchedule:
     Type: String
-    Default: cron(0 11 ? * SUN *)
-    Description: Cron expression for recurring BTC and ETH purchase schedule (e.g., 'cron(0 11 ? * SUN *)' for every Sunday at 11 AM)
+    Default: cron(0 8 ? * SUN *)
+    Description: Cron expression for recurring BTC and ETH purchase schedule (e.g., 'cron(0 8 ? * SUN *)' for every Sunday at 8 AM EDT)
 
 Resources:
   # IAM Role for Lambda and Scheduler
@@ -41,51 +41,41 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/GeminiApiKeys"
               - Effect: Allow
                 Action:
-                  - scheduler:CreateSchedule
-                  - scheduler:ListSchedules
-                  - scheduler:GetSchedule
-                  - scheduler:UpdateSchedule
-                  - scheduler:DeleteSchedule
-                  - scheduler:CreateScheduleGroup
-                  - scheduler:ListScheduleGroups
-                  - scheduler:GetScheduleGroup
-                  - scheduler:DeleteScheduleGroup
-                Resource: '*'
-              - Effect: Allow
-                Action:
                   - lambda:InvokeFunction
-                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:RecurringBuyCrypto"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ManualBuyCrypto"
 
-  # Lambda function for recurring BTC purchases
-  RecurringBuyBTC:
+  # Lambda function for recurring crypto purchases
+  RecurringBuyCrypto:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RecurringBuyBTC
-      Handler: recurring-buy-btc.function.lambda_handler
+      FunctionName: RecurringBuyCrypto
+      Handler: recurring-buy-crypto.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
 
-  # Lambda function for recurring ETH purchases
-  RecurringBuyETH:
+  # Lambda function for manual BTC purchases
+  ManualBuyCrypto:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RecurringBuyETH
-      Handler: recurring-buy-eth.function.lambda_handler
+      FunctionName: ManualBuyCrypto
+      Handler: manual-buy-crypto.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
 
-  # Schedule for invoking BTC Lambda
+  # Schedule for invoking BTC purchases
   RecurringBuyBTCSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyBTC_Schedule
-      Description: Invoke RecurringBuyBTC on the configured schedule
+      Description: Invoke RecurringBuyCrypto for BTC
       GroupName: default
       ScheduleExpression: !Ref PurchaseSchedule
       ScheduleExpressionTimezone: America/New_York
@@ -93,16 +83,16 @@ Resources:
         Mode: "OFF"
       State: ENABLED
       Target:
-        Arn: !GetAtt RecurringBuyBTC.Arn
+        Arn: !GetAtt RecurringBuyCrypto.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
-        Input: '{}'
+        Input: '{"asset":"BTC"}'
 
-  # Schedule for invoking ETH Lambda
+  # Schedule for invoking ETH purchases
   RecurringBuyETHSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: RecurringBuyETH_Schedule
-      Description: Invoke RecurringBuyETH on the configured schedule
+      Description: Invoke RecurringBuyCrypto for ETH
       GroupName: default
       ScheduleExpression: !Ref PurchaseSchedule
       ScheduleExpressionTimezone: America/New_York
@@ -110,36 +100,36 @@ Resources:
         Mode: "OFF"
       State: ENABLED
       Target:
-        Arn: !GetAtt RecurringBuyETH.Arn
+        Arn: !GetAtt RecurringBuyCrypto.Arn
         RoleArn: !GetAtt LambdaExecutionRole.Arn
-        Input: '{}'
+        Input: '{"asset":"ETH"}'
 
-  # Permission for Scheduler to invoke BTC Lambda
-  RecurringBuyBTCPermission:
+  # Permission for Scheduler to invoke RecurringBuyCrypto for BTC
+  RecurringBuyCryptoPermissionBTC:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt RecurringBuyBTC.Arn
+      FunctionName: !GetAtt RecurringBuyCrypto.Arn
       Action: lambda:InvokeFunction
       Principal: scheduler.amazonaws.com
       SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyBTC_Schedule
     DependsOn:
       - RecurringBuyBTCSchedule
-      - RecurringBuyBTC
+      - RecurringBuyCrypto
 
-  # Permission for Scheduler to invoke ETH Lambda
-  RecurringBuyETHPermission:
+  # Permission for Scheduler to invoke RecurringBuyCrypto for ETH
+  RecurringBuyCryptoPermissionETH:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt RecurringBuyETH.Arn
+      FunctionName: !GetAtt RecurringBuyCrypto.Arn
       Action: lambda:InvokeFunction
       Principal: scheduler.amazonaws.com
       SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/RecurringBuyETH_Schedule
     DependsOn:
       - RecurringBuyETHSchedule
-      - RecurringBuyETH
+      - RecurringBuyCrypto
 
 Outputs:
-  RecurringBuyBTCArn:
-    Value: !GetAtt RecurringBuyBTC.Arn
-  RecurringBuyETHArn:
-    Value: !GetAtt RecurringBuyETH.Arn
+  RecurringBuyCryptoArn:
+    Value: !GetAtt RecurringBuyCrypto.Arn
+  ManualBuyCryptoArn:
+    Value: !GetAtt ManualBuyCrypto.Arn

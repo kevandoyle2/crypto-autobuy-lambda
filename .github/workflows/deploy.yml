@@ -28,19 +28,17 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
-          aws-region: us-east-1 # Change to your desired region
+          aws-region: us-east-1 # Your region
 
       # Install dependencies into build directory
       - name: Install Dependencies
         run: |
-          python3 -m pip install -r recurring-buy-btc/requirements.txt -t .
-          python3 -m pip install -r recurring-buy-eth/requirements.txt -t .
+          python3 -m pip install -r requirements.txt -t .
         shell: bash
 
       # Build and deploy with SAM
       - name: Build and Deploy with SAM
         run: |
           sam build --use-container
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=python3.13 --resolve-s3 --capabilities CAPABILITY_IAM
-          # Uncomment and set your S3 bucket if needed: --s3-bucket my-sam-artifacts-bucket
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides PurchaseSchedule="cron(0 8 ? * SUN *)" --resolve-s3 --capabilities CAPABILITY_IAM
         shell: bash
