@@ -1,0 +1,7 @@
+# Ignore manual-buy-crypto.py
+manual-buy*
+
+# Existing ignores for clean repo
+__pycache__/
+*.pyc
+.venv/

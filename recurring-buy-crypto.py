@@ -1,5 +1,4 @@
 import json
-import boto3
 import logging
 import requests
 from shared.gemini_client import GeminiClient

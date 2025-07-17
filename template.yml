@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda functions for recurring and manual BTC and ETH purchases with EventBridge Scheduler
+Description: Deploy Lambda function for recurring BTC and ETH purchases with EventBridge Scheduler
 
 Parameters:
   PurchaseSchedule:
@@ -44,7 +44,6 @@ Resources:
                   - lambda:InvokeFunction
                 Resource:
                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:RecurringBuyCrypto"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ManualBuyCrypto"
 
   # Lambda function for recurring crypto purchases
   RecurringBuyCrypto:
@@ -52,18 +51,6 @@ Resources:
     Properties:
       FunctionName: RecurringBuyCrypto
       Handler: recurring-buy-crypto.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      CodeUri: .
-      Runtime: python3.13
-      Timeout: 30
-      MemorySize: 128
-
-  # Lambda function for manual BTC purchases
-  ManualBuyCrypto:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: ManualBuyCrypto
-      Handler: manual-buy-crypto.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
       Runtime: python3.13
@@ -102,5 +89,3 @@ Resources:
 Outputs:
   RecurringBuyCryptoArn:
     Value: !GetAtt RecurringBuyCrypto.Arn
-  ManualBuyCryptoArn:
-    Value: !GetAtt ManualBuyCrypto.Arn
