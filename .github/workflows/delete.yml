@@ -1,0 +1,29 @@
+name: Delete CloudFormation Stack
+
+on:
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Enable OIDC token
+      contents: read  # Required for checkout
+
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          aws-region: us-east-1 # Match the region used in deploy.yml
+
+      # Delete the CloudFormation stack
+      - name: Delete SAM Stack
+        run: |
+          sam delete --stack-name crypto-auto-buy-lambda --region us-east-1 --no-prompts
+        shell: bash

@@ -40,5 +40,5 @@ jobs:
       - name: Build and Deploy with SAM
         run: |
           sam build --use-container
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambdas --parameter-overrides LambdaRuntime=python3.13 --resolve-s3 --capabilities CAPABILITY_IAM
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambda --parameter-overrides LambdaRuntime=python3.13 --resolve-s3 --capabilities CAPABILITY_IAM
         shell: bash
