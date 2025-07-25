@@ -1,7 +1,23 @@
 import json
 import logging
-import requests
-from shared.gemini_client import GeminiClient
+
+try:
+    import requests
+except ImportError as e:
+    logging.getLogger(__name__).error(f"Failed to import requests: {str(e)}")
+    raise
+
+try:
+    import boto3
+except ImportError as e:
+    logging.getLogger(__name__).error(f"Failed to import boto3: {str(e)}")
+    raise
+
+try:
+    from shared.gemini_client import GeminiClient
+except ImportError as e:
+    logging.getLogger(__name__).error(f"Failed to import GeminiClient: {str(e)}")
+    raise
 
 # Configuration
 TOTAL_ORDER = 80
