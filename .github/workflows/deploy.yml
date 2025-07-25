@@ -1,4 +1,4 @@
-name: Deploy Lambda Functions to AWS
+name: Deploy Lambda Function to AWS
 
 on:
   push:

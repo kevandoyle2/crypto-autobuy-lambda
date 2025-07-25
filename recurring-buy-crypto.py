@@ -4,16 +4,24 @@ import requests
 from shared.gemini_client import GeminiClient
 
 # Configuration
+TOTAL_ORDER = 80
+BTC_PERCENTAGE = 66
+ETH_PERCENTAGE = 34
+
+# Calculate amounts based on percentages
+BTC_AMOUNT = round(TOTAL_ORDER * (BTC_PERCENTAGE / 100.0), 2)
+ETH_AMOUNT = round(TOTAL_ORDER * (ETH_PERCENTAGE / 100.0), 2)
+
 BUY_CONFIG = {
     "BTC": {
-        "amount": 52.8,
+        "amount": BTC_AMOUNT,
         "symbol": "BTCGUSD",
         "tick_size": 8,
         "min_quantity": 0.0001,
         "slippage_factor": 0.999
     },
     "ETH": {
-        "amount": 27.2,
+        "amount": ETH_AMOUNT,
         "symbol": "ETHGUSD",
         "tick_size": 6,
         "min_quantity": 0.00001,
