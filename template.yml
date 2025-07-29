@@ -5,7 +5,7 @@ Description: Deploy Lambda function for recurring BTC and ETH purchases with Eve
 Parameters:
   PurchaseSchedule:
     Type: String
-    Default: cron(0 11 ? * FRI *)
+    Default: cron(0 8 ? * SUN *)
     Description: Cron expression for recurring BTC and ETH purchase schedule
 
 Resources:
