@@ -9,6 +9,7 @@ Parameters:
     Description: Cron expression for recurring BTC and ETH purchase schedule
   NotificationEmail:
     Type: String
+    Default: kpd@duck.com
     Description: Email address to receive alerts
 
 Resources:
