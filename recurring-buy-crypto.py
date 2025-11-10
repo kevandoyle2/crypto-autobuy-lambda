@@ -2,14 +2,16 @@ import json
 import logging
 import requests
 import boto3
+import os
 from shared.gemini_client import GeminiClient
 
 # Configuration
-TOTAL_ORDER = 80
+TOTAL_DEPOSIT = 160
+TOTAL_ORDER = TOTAL_DEPOSIT / 2
 BTC_PERCENTAGE = 66
 ETH_PERCENTAGE = 34
 
-# Calculate amounts based on percentages
+# Calculate amounts
 BTC_AMOUNT = round(TOTAL_ORDER * (BTC_PERCENTAGE / 100.0), 2)
 ETH_AMOUNT = round(TOTAL_ORDER * (ETH_PERCENTAGE / 100.0), 2)
 
@@ -32,8 +34,26 @@ BUY_CONFIG = {
 
 # Initialize clients
 ssm_client = boto3.client('ssm')
+sns_client = boto3.client('sns')
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def send_alert(subject, message):
+    """Send an SNS alert if configured."""
+    if not SNS_TOPIC_ARN:
+        logger.warning("SNS topic ARN not set, skipping alert.")
+        return
+    try:
+        sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        logger.info(f"Alert sent: {subject}")
+    except Exception as e:
+        logger.error(f"Failed to send SNS alert: {str(e)}")
 
 def get_api_keys():
     try:
@@ -63,13 +83,15 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
             if error_resp.get('reason') == "ApiKeyIpFilteringFailure":
                 error_message = f"API key blocked due to IP filtering for {asset}. Update Gemini IP allowlist or disable IP restrictions."
                 logger.error(error_message)
+                send_alert("Crypto Buy Failed - IP Filtering", error_message)
                 return {"error": error_message}
         except Exception:
             error_msg = str(http_err)
         logger.error(f"Balance check failed for {asset}: {error_msg}")
+        send_alert("Crypto Buy Failed - Balance Check", error_msg)
         return {"error": error_msg}
 
-    # Estimate fees (0.01% taker fee for stablecoin pairs)
+    # Estimate fees
     fee_rate = 0.0001
     required_funds = buy_size * (1 + fee_rate)
     logger.info(f"Required funds for {asset} (including {fee_rate*100}% fee): ${required_funds:.2f}")
@@ -77,6 +99,7 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
     if gusd_balance < required_funds:
         error_message = f"Insufficient GUSD balance for {asset}: ${gusd_balance} available, need ${required_funds:.2f}. Fund your GUSD account."
         logger.error(error_message)
+        send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
         return {"error": error_message}
 
     # Get current ask price
@@ -87,6 +110,7 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
     except Exception as e:
         error_message = f"Failed to get ticker for {symbol}: {str(e)}"
         logger.error(error_message)
+        send_alert("Crypto Buy Failed - Ticker", error_message)
         return {"error": error_message}
 
     quote_currency_price_increment = 2
@@ -96,6 +120,7 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
     if crypto_amount < min_quantity:
         error_message = f"Calculated {asset} amount ({crypto_amount} {asset}) is below minimum order size ({min_quantity} {asset})."
         logger.error(error_message)
+        send_alert("Crypto Buy Failed - Order Too Small", error_message)
         return {"error": error_message}
 
     order_cost = float(execution_price) * crypto_amount
@@ -125,9 +150,11 @@ def buy_crypto(asset, buy_size, symbol, tick_size, min_quantity, slippage_factor
         except Exception:
             error_msg = str(http_err)
         logger.error(f"Order failed for {asset}: {error_msg}")
+        send_alert(f"Crypto Buy Failed - {asset} Order Error", error_msg)
         return {"error": error_msg}
     except Exception as e:
         logger.error(f"Unexpected error for {asset}: {str(e)}")
+        send_alert(f"Crypto Buy Failed - {asset} Unexpected", str(e))
         return {"error": str(e)}
 
 def lambda_handler(event, context):
@@ -137,7 +164,7 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
         gemini = GeminiClient(public_key, private_key)
 
-        # Check total GUSD balance for all assets
+        # Check total GUSD balance
         try:
             balances = gemini.get_balance()
             gusd_balance = 0.0
@@ -149,10 +176,8 @@ def lambda_handler(event, context):
             if gusd_balance < total_required_funds:
                 error_message = f"Insufficient GUSD balance for all purchases: ${gusd_balance} available, need ${total_required_funds:.2f}. Fund your GUSD account."
                 logger.error(error_message)
-                return {
-                    'statusCode': 400,
-                    'body': json.dumps({'error': error_message})
-                }
+                send_alert("Crypto Buy Failed - Insufficient Total Funds", error_message)
+                return {'statusCode': 400, 'body': json.dumps({'error': error_message})}
         except requests.exceptions.HTTPError as http_err:
             try:
                 error_resp = http_err.response.json()
@@ -160,17 +185,13 @@ def lambda_handler(event, context):
                 if error_resp.get('reason') == "ApiKeyIpFilteringFailure":
                     error_message = "API key blocked due to IP filtering. Update Gemini IP allowlist or disable IP restrictions."
                     logger.error(error_message)
-                    return {
-                        'statusCode': 400,
-                        'body': json.dumps({'error': error_message})
-                    }
+                    send_alert("Crypto Buy Failed - IP Filtering", error_message)
+                    return {'statusCode': 400, 'body': json.dumps({'error': error_message})}
             except Exception:
                 error_msg = str(http_err)
             logger.error(f"Balance check failed: {error_msg}")
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': error_msg})
-            }
+            send_alert("Crypto Buy Failed - Balance Check", error_msg)
+            return {'statusCode': 400, 'body': json.dumps({'error': error_msg})}
 
         # Process each asset
         for asset, config in BUY_CONFIG.items():
@@ -184,13 +205,12 @@ def lambda_handler(event, context):
             )
             results[asset] = result
 
-        return {
-            'statusCode': 200,
-            'body': json.dumps(results if any(isinstance(r, dict) and 'error' not in r for r in results.values()) else {'message': 'End of script'})
-        }
+        if any('error' in r for r in results.values()):
+            send_alert("Crypto Buy Completed With Errors", json.dumps(results, indent=2))
+
+        return {'statusCode': 200, 'body': json.dumps(results)}
+
     except Exception as e:
         logger.error(f"Lambda execution failed: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
-        }
+        send_alert("Crypto Buy Lambda Failed", f"Unhandled Error: {str(e)}")
+        return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}

@@ -4,4 +4,4 @@ manual-buy*
 # Existing ignores for clean repo
 __pycache__/
 *.pyc
-.venv/
+*venv/

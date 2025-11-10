@@ -1,14 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Deploy Lambda function for recurring BTC and ETH purchases with EventBridge Scheduler
+Description: Deploy Lambda function for recurring BTC and ETH purchases with error email notifications
 
 Parameters:
   PurchaseSchedule:
     Type: String
     Default: cron(0 8 ? * SUN *)
     Description: Cron expression for recurring BTC and ETH purchase schedule
+  NotificationEmail:
+    Type: String
+    Description: Email address to receive alerts
 
 Resources:
+  # SNS Topic for Alerts
+  CryptoBuyAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: CryptoBuyAlerts
+      DisplayName: "Crypto Buy Lambda Alerts"
+
+  CryptoBuyAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref CryptoBuyAlertTopic
+      Endpoint: !Ref NotificationEmail
+
   # IAM Role for Lambda and Scheduler
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -41,6 +58,10 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/GeminiApiKeys"
               - Effect: Allow
                 Action:
+                  - sns:Publish
+                Resource: !Ref CryptoBuyAlertTopic
+              - Effect: Allow
+                Action:
                   - lambda:InvokeFunction
                 Resource:
                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:RecurringBuyCrypto"
@@ -56,6 +77,9 @@ Resources:
       Runtime: python3.13
       Timeout: 30
       MemorySize: 128
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref CryptoBuyAlertTopic
 
   # Schedule for invoking recurring crypto purchases
   RecurringBuyCryptoSchedule:
@@ -89,3 +113,5 @@ Resources:
 Outputs:
   RecurringBuyCryptoArn:
     Value: !GetAtt RecurringBuyCrypto.Arn
+  AlertTopicArn:
+    Value: !Ref CryptoBuyAlertTopic
