@@ -21,14 +21,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13' # Explicitly set to Python 3.13
+          python-version: '3.13'
 
       # Configure AWS credentials using OIDC
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
-          aws-region: us-east-1 # Your region
+          aws-region: us-east-1
 
       # Install dependencies into build directory
       - name: Install Dependencies

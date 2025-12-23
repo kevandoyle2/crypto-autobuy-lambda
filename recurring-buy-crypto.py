@@ -6,7 +6,7 @@ import os
 from shared.gemini_client import GeminiClient
 
 # Configuration
-TOTAL_DEPOSIT = 160
+TOTAL_DEPOSIT = 170
 TOTAL_ORDER = TOTAL_DEPOSIT / 2
 BTC_PERCENTAGE = 66
 ETH_PERCENTAGE = 34
