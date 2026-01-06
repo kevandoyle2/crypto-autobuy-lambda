@@ -1,6 +1,5 @@
 import json
 import logging
-import requests
 import boto3
 import os
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
@@ -9,7 +8,6 @@ from shared.gemini_client import GeminiClient
 # ----------------------------
 # Configuration
 # ----------------------------
-FEE_RATE = Decimal("0.0001")  # 0.01%
 
 TOTAL_DEPOSIT = Decimal("170")
 MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
@@ -17,23 +15,23 @@ MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-# Split MAX_BUY into BTC/ETH allocations (gross, including fee)
+# Gross allocations (total GUSD spent including fee)
 BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 BUY_CONFIG = {
     "BTC": {
         "amount": BTC_AMOUNT,
-        "symbol": "BTCGUSD",
+        "symbol": "btcgusd",
         "tick_size": 8,
-        "min_quantity": Decimal("0.0001"),
+        "min_quantity": Decimal("0.00001"),
         "slippage_factor": Decimal("0.999"),
     },
     "ETH": {
         "amount": ETH_AMOUNT,
-        "symbol": "ETHGUSD",
+        "symbol": "ethgusd",
         "tick_size": 6,
-        "min_quantity": Decimal("0.00001"),
+        "min_quantity": Decimal("0.001"),
         "slippage_factor": Decimal("0.998"),
     },
 }
@@ -85,6 +83,7 @@ def buy_crypto(
     tick_size: int,
     min_quantity: Decimal,
     slippage_factor: Decimal,
+    fee_rate: Decimal,
 ):
     try:
         gusd_balance = _get_gusd_available(gemini)
@@ -114,8 +113,10 @@ def buy_crypto(
     # Apply slippage
     execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    # Calculate crypto amount so total USD spent = gross_amount including fee
-    crypto_amount = (gross_amount / (execution_price * (1 + FEE_RATE))).quantize(
+    # Calculate principal so that principal + fee = gross_amount exactly (in theory)
+    principal_usd = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+    crypto_amount = (principal_usd / execution_price).quantize(
         Decimal("1").scaleb(-tick_size), rounding=ROUND_DOWN
     )
 
@@ -125,12 +126,40 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Order Too Small", error_message)
         return {"error": error_message}
 
+    # Final actual costs after quantization
     order_cost = (crypto_amount * execution_price).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-    order_fee = (order_cost * FEE_RATE).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
     total_order_cost = (order_cost + order_fee).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    logger.info(f"Order: {crypto_amount} {asset} at ${execution_price} = ${order_cost}")
-    logger.info(f"Fee: ${order_fee}, Total spent: ${total_order_cost}")
+    logger.info(f"Order: {crypto_amount} {asset} at ${execution_price}")
+    logger.info(f"Principal: ${order_cost}, Fee (est.): ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
+
+    # === BUMP LOOP TO MINIMIZE UNDER-SPEND ===
+    tick = Decimal("1").scaleb(-tick_size)
+    initial_crypto = crypto_amount
+
+    while True:
+        potential_crypto = crypto_amount + tick
+        potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_total = potential_cost + potential_fee
+
+        # Stop if adding one more tick would exceed target
+        if potential_total > gross_amount:
+            break
+
+        # Accept the improvement
+        crypto_amount = potential_crypto
+        order_cost = potential_cost
+        order_fee = potential_fee
+        total_order_cost = potential_total
+
+    if crypto_amount > initial_crypto:
+        logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} (exact)")
+    # === END BUMP LOOP ===
+
+    logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
+    logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
 
     order_payload = {
         "symbol": symbol,
@@ -157,10 +186,22 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
         gemini = GeminiClient(public_key, private_key)
 
-        # Check total GUSD balance
+        # Dynamically fetch your actual maker fee tier
+        try:
+            notional_volume = gemini.get_notional_volume()
+            maker_bps = int(notional_volume.get('api_maker_fee_bps', 20))  # Default low-volume tier
+            FEE_RATE = Decimal(maker_bps) / Decimal("10000")
+            logger.info(f"Dynamic Maker Fee Rate: {FEE_RATE * 100:.2f}% ({maker_bps} bps)")
+        except Exception as e:
+            error_message = f"Failed to fetch fee tier: {str(e)}. Using default 0.20%."
+            logger.warning(error_message)
+            send_alert("Fee Rate Fetch Warning", error_message)
+            FEE_RATE = Decimal("0.002")  # 0.20%
+
+        # Check overall balance
         gusd_balance = _get_gusd_available(gemini)
         if gusd_balance < MAX_BUY:
-            error_message = f"Insufficient GUSD balance: ${gusd_balance} available, ${MAX_BUY} required."
+            error_message = f"Insufficient GUSD: ${gusd_balance} < ${MAX_BUY} required."
             logger.error(error_message)
             send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
             return {"statusCode": 400, "body": json.dumps({"error": error_message})}
@@ -176,6 +217,7 @@ def lambda_handler(event, context):
                 tick_size=cfg["tick_size"],
                 min_quantity=cfg["min_quantity"],
                 slippage_factor=cfg["slippage_factor"],
+                fee_rate=FEE_RATE,
             )
 
         if any("error" in r for r in results.values()):
