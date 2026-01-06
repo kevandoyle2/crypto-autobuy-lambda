@@ -14,14 +14,16 @@ from shared.gemini_client import GeminiClient
 FEE_RATE = Decimal("0.0001")  # 0.01%
 
 TOTAL_DEPOSIT = Decimal("170")
-GROSS_BUDGET = (TOTAL_DEPOSIT / Decimal("2")).quantize(Decimal("0.01"))
 
+# Maximum amount we want to spend per Lambda execution (half of TOTAL_DEPOSIT)
+MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
+
+# Percentage allocations
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-# Net budget so that: net_total * (1 + fee_rate) <= gross_budget
-# (ROUND_DOWN ensures never exceed GROSS_BUDGET due to rounding)
-TOTAL_NET = (GROSS_BUDGET / (Decimal("1") + FEE_RATE)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+# Net budget so that: net_total * (1 + fee_rate) <= MAX_BUY
+TOTAL_NET = (MAX_BUY / (Decimal("1") + FEE_RATE)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
 # Split net across assets in cents, with remainder assigned to ETH so totals match exactly
 BTC_AMOUNT = (TOTAL_NET * (BTC_PERCENTAGE / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
@@ -94,12 +96,10 @@ def buy_crypto(
     min_quantity: Decimal,
     slippage_factor: Decimal,
 ):
-    # Check GUSD balance
     try:
         gusd_balance = _get_gusd_available(gemini)
         logger.info(f"GUSD Available Balance: ${gusd_balance}")
     except requests.exceptions.HTTPError as http_err:
-        # If GeminiClient raises HTTPError
         try:
             error_resp = http_err.response.json()
             reason = error_resp.get("reason")
@@ -124,14 +124,12 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Balance Check", str(e))
         return {"error": str(e)}
 
-    # Required funds includes estimated fee
+    # Ensure never spend more than MAX_BUY
     required_funds = (buy_size * (Decimal("1") + FEE_RATE)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-    logger.info(f"Required funds for {asset} (incl. fee): ${required_funds}")
-
     if gusd_balance < required_funds:
         error_message = (
             f"Insufficient GUSD balance for {asset}: ${gusd_balance} available, need ${required_funds}. "
-            "Fund your GUSD account."
+            "Fund your GUSD account or reduce TOTAL_DEPOSIT."
         )
         logger.error(error_message)
         send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
@@ -148,10 +146,10 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Ticker", error_message)
         return {"error": error_message}
 
-    # Execution price applies slippage; Gemini USD quote typically 2 decimals
+    # Execution price applies slippage
     execution_price = (symbol_spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    # Replace 0.998 with (1 - fee_rate) to match the fee model
+    # Calculate crypto amount to buy including fee
     crypto_amount = (buy_size * (Decimal("1") - FEE_RATE)) / execution_price
 
     # Quantize crypto amount to tick size (decimal places)
@@ -206,35 +204,34 @@ def buy_crypto(
 def lambda_handler(event, context):
     """
     Goal:
-      - Gross weekly spend budget is EXACTLY GROSS_BUDGET ($85.00 for deposit=170)
+      - Spend at most MAX_BUY per execution (half of TOTAL_DEPOSIT)
       - Keep fee calculations
-      - Never require $85.01 (avoid depleting your reserve)
+      - Never touch the other half (reserve)
     """
     try:
         # Build Gemini client once
         public_key, private_key = get_api_keys()
         gemini = GeminiClient(public_key, private_key)
 
-        # Total required funds computed from the NET amounts + fee;
-        # should be <= GROSS_BUDGET by construction.
+        # Total required funds computed from the NET amounts + fee
         total_required_funds = sum(
             (cfg["amount"] * (Decimal("1") + FEE_RATE)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
             for cfg in BUY_CONFIG.values()
         )
 
-        logger.info(f"Configured gross budget: ${GROSS_BUDGET}")
+        logger.info(f"Configured MAX_BUY: ${MAX_BUY}")
         logger.info(f"Configured net total: ${TOTAL_NET}")
         logger.info(f"Total required funds (net + fee): ${total_required_funds}")
 
-        # Check total GUSD balance once
+        # Check GUSD balance once
         try:
             gusd_balance = _get_gusd_available(gemini)
             logger.info(f"GUSD Available Balance: ${gusd_balance}")
 
-            if gusd_balance < total_required_funds:
+            if gusd_balance < MAX_BUY:
                 error_message = (
                     f"Insufficient GUSD balance for all purchases: ${gusd_balance} available, "
-                    f"need ${total_required_funds}. Fund your GUSD account."
+                    f"max spend allowed: ${MAX_BUY}. Fund your GUSD account."
                 )
                 logger.error(error_message)
                 send_alert("Crypto Buy Failed - Insufficient Total Funds", error_message)
