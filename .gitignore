@@ -1,5 +1,5 @@
 # Ignore manual-buy-crypto.py
-manual-buy*
+manual*
 
 # Existing ignores for clean repo
 __pycache__/

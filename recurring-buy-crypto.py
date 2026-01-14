@@ -110,10 +110,9 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Ticker", error_message)
         return {"error": error_message}
 
-    # Apply slippage
     execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    # Calculate principal so that principal + fee = gross_amount exactly (in theory)
+    # Calculate principal so principal + fee ≈ gross_amount
     principal_usd = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
     crypto_amount = (principal_usd / execution_price).quantize(
@@ -126,37 +125,36 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Order Too Small", error_message)
         return {"error": error_message}
 
-    # Final actual costs after quantization
+    # Final actual costs after initial quantization
     order_cost = (crypto_amount * execution_price).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
     order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
     total_order_cost = (order_cost + order_fee).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    logger.info(f"Order: {crypto_amount} {asset} at ${execution_price}")
-    logger.info(f"Principal: ${order_cost}, Fee (est.): ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
+    logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (target: ${gross_amount})")
 
-    # === BUMP LOOP TO MINIMIZE UNDER-SPEND ===
+    # RELAXED BUMP LOOP — allows up to +$0.01 over to hit exact target
     tick = Decimal("1").scaleb(-tick_size)
     initial_crypto = crypto_amount
 
-    while True:
+    while total_order_cost < gross_amount:
         potential_crypto = crypto_amount + tick
-        potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
-        potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         potential_total = potential_cost + potential_fee
 
-        # Stop if adding one more tick would exceed target
-        if potential_total > gross_amount:
+        # Allow tiny over-spend (max +$0.01) to reach or exceed target
+        if potential_total > gross_amount + Decimal("0.01"):
             break
 
-        # Accept the improvement
         crypto_amount = potential_crypto
         order_cost = potential_cost
         order_fee = potential_fee
         total_order_cost = potential_total
 
     if crypto_amount > initial_crypto:
-        logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} (exact)")
-    # === END BUMP LOOP ===
+        over = total_order_cost - gross_amount
+        logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} "
+                    f"(exact or +${over:.2f})")
 
     logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
     logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
