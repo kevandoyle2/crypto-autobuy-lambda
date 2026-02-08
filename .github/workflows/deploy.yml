@@ -5,40 +5,45 @@ on:
     branches:
       - main
 
+env:
+  AWS_REGION: us-east-1
+  LAMBDA_RUNTIME: python3.14
+  PYTHON_VERSION: "3.14"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # Enable OIDC token
-      contents: read  # Required for checkout
+      id-token: write
+      contents: read
 
     steps:
-      # Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up Python 3.13 runtime
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@v2
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      # Configure AWS credentials using OIDC
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Install dependencies into build directory
-      - name: Install Dependencies
-        run: |
-          python3 -m pip install -r requirements.txt -t .
-        shell: bash
-
-      # Build and deploy with SAM
       - name: Build and Deploy with SAM
+        shell: bash
         run: |
           sam build --use-container
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name crypto-auto-buy-lambda --parameter-overrides LambdaRuntime=python3.13 --resolve-s3 --capabilities CAPABILITY_IAM
-        shell: bash
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name crypto-auto-buy-lambda \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              LambdaRuntime=${{ env.LAMBDA_RUNTIME }}

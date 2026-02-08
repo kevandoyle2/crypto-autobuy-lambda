@@ -7,10 +7,16 @@ Parameters:
     Type: String
     Default: cron(0 8 ? * SUN *)
     Description: Cron expression for recurring BTC and ETH purchase schedule
+
   NotificationEmail:
     Type: String
     Default: kpd@duck.com
     Description: Email address to receive alerts
+
+  LambdaRuntime:
+    Type: String
+    Default: python3.14
+    Description: Lambda runtime for RecurringBuyCrypto (e.g. python3.12, python3.13, python3.14)
 
 Resources:
   # SNS Topic for Alerts
@@ -72,10 +78,14 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: RecurringBuyCrypto
-      Handler: recurring-buy-crypto.lambda_handler
+
+      Handler: recurring_buy_crypto.lambda_handler
+
       Role: !GetAtt LambdaExecutionRole.Arn
       CodeUri: .
-      Runtime: python3.13
+
+      Runtime: !Ref LambdaRuntime
+
       Timeout: 30
       MemorySize: 128
       Environment:
