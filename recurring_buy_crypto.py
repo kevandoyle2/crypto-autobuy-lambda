@@ -5,238 +5,248 @@ import os
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from shared.gemini_client import GeminiClient
 
-# ----------------------------
-# Configuration
-# ----------------------------
+# ============================================================
+# CONFIGURATION — FIXED WEEKLY BUY AMOUNTS
+# ============================================================
+
 TOTAL_DEPOSIT = Decimal("170")
 MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+BTC_AMOUNT = (MAX_BUY * BTC_PERCENTAGE / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 BUY_CONFIG = {
     "BTC": {
-        "amount": BTC_AMOUNT,
         "symbol": "btcgusd",
+        "amount": BTC_AMOUNT,
         "tick_size": 8,
         "min_quantity": Decimal("0.00001"),
-        "slippage_factor": Decimal("0.999"),
-        "maker_or_cancel": True,
     },
     "ETH": {
-        "amount": ETH_AMOUNT,
         "symbol": "ethgusd",
+        "amount": ETH_AMOUNT,
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
-        "slippage_factor": Decimal("1.0001"),
-        "maker_or_cancel": False,
     },
 }
 
-# ----------------------------
-# AWS clients / logging
-# ----------------------------
+# ============================================================
+# AWS CLIENTS + LOGGING
+# ============================================================
+
 ssm_client = boto3.client("ssm")
 sns_client = boto3.client("sns")
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
-def send_alert(subject: str, message: str) -> None:
-    if not SNS_TOPIC_ARN:
-        logger.warning("SNS topic ARN not set, skipping alert.")
-        return
-    try:
-        sns_client.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
-        logger.info(f"Alert sent: {subject}")
-    except Exception as e:
-        logger.error(f"Failed to send SNS alert: {str(e)}")
+# ============================================================
+# ALERTING
+# ============================================================
 
+def send_alert(subject: str, message: str):
+    if not SNS_TOPIC_ARN:
+        return
+
+    try:
+        sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+    except Exception as e:
+        logger.error(f"SNS failed: {e}")
+
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 def get_api_keys():
     try:
-        response = ssm_client.get_parameter(Name="GeminiApiKeys", WithDecryption=True)
+        response = ssm_client.get_parameter(
+            Name="GeminiApiKeys",
+            WithDecryption=True
+        )
         secret = json.loads(response["Parameter"]["Value"])
         return secret["API key"], secret["API Secret"]
     except Exception as e:
-        raise ValueError(f"Error retrieving API keys: {str(e)}")
+        raise Exception(f"Failed retrieving API keys: {e}")
 
 
-def _get_gusd_available(gemini: GeminiClient) -> Decimal:
+def get_gusd_balance(gemini: GeminiClient) -> Decimal:
     balances = gemini.get_balance()
-    for asset_info in balances:
-        if asset_info.get("currency") == "GUSD":
-            return Decimal(str(asset_info.get("available", "0")))
+    for b in balances:
+        if b.get("currency") == "GUSD":
+            return Decimal(str(b.get("available", "0")))
     return Decimal("0")
 
 
-# ----------------------------
-# HYBRID ZERO-FAILURE BUY
-# ----------------------------
-def buy_crypto(
-    gemini: GeminiClient,
-    asset: str,
-    gross_amount: Decimal,
-    symbol: str,
-    tick_size: int,
-    min_quantity: Decimal,
-    slippage_factor: Decimal,
-    fee_rate: Decimal,
-    maker_or_cancel: bool,
-):
-    gusd_balance = _get_gusd_available(gemini)
-    logger.info(f"GUSD Available Balance: ${gusd_balance}")
+# ============================================================
+# CORE ORDER ENGINE
+# ============================================================
 
-    effective_gross = min(gross_amount, gusd_balance)
-    SHORTFALL_TOLERANCE = Decimal("0.20")
-    if effective_gross < gross_amount - SHORTFALL_TOLERANCE:
-        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available, need ${gross_amount}"
-        logger.error(error_message)
-        send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
-        return {"error": error_message}
+def execute_buy(gemini, asset_name, config, maker_fee):
 
-    try:
-        book = gemini.get_book(symbol)
-        best_bid = Decimal(str(book["bids"][0]["price"]))
-        best_ask = Decimal(str(book["asks"][0]["price"]))
-        logger.info(f"{symbol} Book — Bid: {best_bid}, Ask: {best_ask}")
-    except Exception as e:
-        error_message = f"Failed to get order book for {symbol}: {str(e)}"
-        logger.error(error_message)
-        send_alert("Crypto Buy Failed - Book Fetch", error_message)
-        return {"error": error_message}
+    gross_amount = config["amount"]
+    symbol = config["symbol"]
 
-    tick = Decimal("1").scaleb(-tick_size)
+    book = gemini.get_book(symbol)
 
-    # ---------------------------
-    # 1️⃣ SAFE MAKER ATTEMPT
-    # ---------------------------
-    if maker_or_cancel:
-        execution_price = (best_bid - Decimal("0.01")).quantize(Decimal("0.01"), ROUND_DOWN)
-        active_fee_rate = fee_rate
-        attempt_mode = "maker"
-    else:
-        execution_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        active_fee_rate = fee_rate * Decimal("2")
-        attempt_mode = "taker_direct"
+    best_bid = Decimal(str(book["bids"][0]["price"]))
+    best_ask = Decimal(str(book["asks"][0]["price"]))
 
-    def compute_order(price, fee):
-        principal_usd = (effective_gross / (Decimal("1") + fee)).quantize(Decimal("0.01"), ROUND_DOWN)
-        crypto_amount = (principal_usd / price).quantize(tick, rounding=ROUND_DOWN)
-        return crypto_amount
+    tick = Decimal("1").scaleb(-config["tick_size"])
 
-    crypto_amount = compute_order(execution_price, active_fee_rate)
+    def compute_quantity(price, fee_rate):
+        principal = (gross_amount / (Decimal("1") + fee_rate)) \
+            .quantize(Decimal("0.01"), ROUND_DOWN)
 
-    if crypto_amount < min_quantity:
-        return {"error": f"{asset} amount below minimum"}
+        quantity = (principal / price) \
+            .quantize(tick, rounding=ROUND_DOWN)
 
-    # bump loop
-    initial_crypto = crypto_amount
-    while True:
-        potential_crypto = crypto_amount + tick
-        potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
-        potential_fee = (potential_cost * active_fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
-        potential_total = potential_cost + potential_fee
-        if potential_total > effective_gross:
-            break
-        crypto_amount = potential_crypto
+        return quantity
 
-    order_payload = {
-        "symbol": symbol,
-        "amount": str(crypto_amount),
-        "price": str(execution_price),
-        "side": "buy",
-        "type": "exchange limit",
-    }
+    # ====================================================
+    # 1️⃣ MAKER ATTEMPT (LOWEST FEES)
+    # ====================================================
 
-    if attempt_mode == "maker":
-        order_payload["options"] = ["maker-or-cancel"]
+    maker_price = (best_bid - Decimal("0.01")) \
+        .quantize(Decimal("0.01"), ROUND_DOWN)
 
-    logger.info(f"{asset} Attempting {attempt_mode.upper()} @ {execution_price}")
+    qty = compute_quantity(maker_price, maker_fee)
 
-    try:
-        result = gemini.place_order(order_payload)
-        logger.info(f"{asset} {attempt_mode} success")
-        return {"mode": attempt_mode, "result": result}
-    except Exception as e:
-        if attempt_mode != "maker":
-            raise
-        logger.warning(f"{asset} Maker failed → switching to taker")
+    if qty >= config["min_quantity"]:
+        payload = {
+            "symbol": symbol,
+            "amount": str(qty),
+            "price": str(maker_price),
+            "side": "buy",
+            "type": "exchange limit",
+            "options": ["maker-or-cancel"],
+        }
 
-    # ---------------------------
+        try:
+            logger.info(f"{asset_name}: Maker attempt @ {maker_price}")
+            result = gemini.place_order(payload)
+            return {"mode": "maker", "result": result}
+        except Exception:
+            logger.info(f"{asset_name}: Maker failed → fallback")
+
+    # ====================================================
     # 2️⃣ TAKER FALLBACK
-    # ---------------------------
-    execution_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    taker_fee = fee_rate * Decimal("2")
-    crypto_amount = compute_order(execution_price, taker_fee)
+    # ====================================================
 
-    if crypto_amount < min_quantity:
-        return {"error": f"{asset} fallback amount below minimum"}
+    taker_price = (best_ask + Decimal("0.01")) \
+        .quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    order_payload = {
+    taker_fee = maker_fee * Decimal("2")
+
+    qty = compute_quantity(taker_price, taker_fee)
+
+    if qty < config["min_quantity"]:
+        error_msg = f"{asset_name} below minimum trade size"
+        logger.error(error_msg)
+        return {"error": error_msg}
+
+    payload = {
         "symbol": symbol,
-        "amount": str(crypto_amount),
-        "price": str(execution_price),
+        "amount": str(qty),
+        "price": str(taker_price),
         "side": "buy",
         "type": "exchange limit",
     }
 
-    logger.info(f"{asset} TAKER FALLBACK @ {execution_price}")
-    result = gemini.place_order(order_payload)
+    logger.info(f"{asset_name}: Taker fallback @ {taker_price}")
+    result = gemini.place_order(payload)
+
     return {"mode": "taker_fallback", "result": result}
 
 
-# ----------------------------
+# ============================================================
 # LAMBDA HANDLER
-# ----------------------------
+# ============================================================
+
 def lambda_handler(event, context):
+
     try:
         public_key, private_key = get_api_keys()
         gemini = GeminiClient(public_key, private_key)
 
-        try:
-            notional_volume = gemini.get_notional_volume()
-            maker_bps = int(notional_volume.get('api_maker_fee_bps', 20))
-            FEE_RATE = Decimal(maker_bps) / Decimal("10000")
-            logger.info(f"Dynamic Maker Fee Rate: {FEE_RATE * 100:.2f}% ({maker_bps} bps)")
-        except Exception as e:
-            error_message = f"Failed to fetch fee tier: {str(e)}. Using default 0.20%."
-            logger.warning(error_message)
-            send_alert("Fee Rate Fetch Warning", error_message)
-            FEE_RATE = Decimal("0.002")
+        gusd_balance = get_gusd_balance(gemini)
 
-        gusd_balance = _get_gusd_available(gemini)
-        if gusd_balance < Decimal("20.00"):
-            error_message = f"Insufficient GUSD: ${gusd_balance} (too low to proceed)"
-            logger.error(error_message)
-            send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
-            return {"statusCode": 400, "body": json.dumps({"error": error_message})}
+        required_total = BTC_AMOUNT + ETH_AMOUNT
+
+        if gusd_balance < required_total:
+            message = (
+                f"Insufficient GUSD. "
+                f"Balance: {gusd_balance}, Required: {required_total}"
+            )
+            logger.error(message)
+            send_alert("Crypto Buy Failed - Insufficient Funds", message)
+
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": message})
+            }
+
+        # ----------------------------------------
+        # Fetch Dynamic Maker Fee Tier
+        # ----------------------------------------
+
+        try:
+            nv = gemini.get_notional_volume()
+            maker_bps = int(nv.get("api_maker_fee_bps", 20))
+            maker_fee = Decimal(maker_bps) / Decimal("10000")
+            logger.info(f"Maker fee: {maker_fee * 100:.4f}%")
+        except Exception:
+            maker_fee = Decimal("0.002")
+            logger.warning("Fee fetch failed — using 0.20%")
 
         results = {}
-        for asset, cfg in BUY_CONFIG.items():
-            results[asset] = buy_crypto(
-                gemini=gemini,
-                asset=asset,
-                gross_amount=cfg["amount"],
-                symbol=cfg["symbol"],
-                tick_size=cfg["tick_size"],
-                min_quantity=cfg["min_quantity"],
-                slippage_factor=cfg["slippage_factor"],
-                fee_rate=FEE_RATE,
-                maker_or_cancel=cfg.get("maker_or_cancel", True),
-            )
 
+        results["BTC"] = execute_buy(
+            gemini,
+            "BTC",
+            BUY_CONFIG["BTC"],
+            maker_fee
+        )
+
+        results["ETH"] = execute_buy(
+            gemini,
+            "ETH",
+            BUY_CONFIG["ETH"],
+            maker_fee
+        )
+
+        # Send alert if partial failures
         if any("error" in r for r in results.values()):
-            send_alert("Crypto Buy Completed With Errors", json.dumps(results, indent=2))
+            send_alert("Crypto Buy Completed With Errors",
+                       json.dumps(results, indent=2))
 
-        return {"statusCode": 200, "body": json.dumps(results)}
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "balance": str(gusd_balance),
+                "btc_target": str(BTC_AMOUNT),
+                "eth_target": str(ETH_AMOUNT),
+                "results": results
+            })
+        }
 
     except Exception as e:
-        logger.error(f"Lambda execution failed: {str(e)}")
-        send_alert("Crypto Buy Lambda Failed", str(e))
-        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+        logger.exception("Lambda execution failed")
+        send_alert("Crypto Buy Lambda Fatal Error", str(e))
+
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
