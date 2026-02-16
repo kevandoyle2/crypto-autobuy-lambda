@@ -31,8 +31,8 @@ BUY_CONFIG = {
         "symbol": "ethgusd",
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
-        "slippage_factor": Decimal("1.0001"),  # Slight premium above ask — forces acceptance
-        "maker_or_cancel": False,  # No maker-or-cancel — bypasses 406 validation
+        "slippage_factor": Decimal("1.0001"),
+        "maker_or_cancel": False,
     },
 }
 
@@ -75,6 +75,9 @@ def _get_gusd_available(gemini: GeminiClient) -> Decimal:
     return Decimal("0")
 
 
+# ----------------------------
+# HYBRID ZERO-FAILURE BUY
+# ----------------------------
 def buy_crypto(
     gemini: GeminiClient,
     asset: str,
@@ -92,78 +95,56 @@ def buy_crypto(
     effective_gross = min(gross_amount, gusd_balance)
     SHORTFALL_TOLERANCE = Decimal("0.20")
     if effective_gross < gross_amount - SHORTFALL_TOLERANCE:
-        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available, need ${gross_amount} (short by too much)"
+        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available, need ${gross_amount}"
         logger.error(error_message)
         send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
         return {"error": error_message}
 
-    if effective_gross < gross_amount:
-        logger.info(f"Adjusted {asset} target from ${gross_amount} to ${effective_gross} (available balance)")
-
     try:
-        ticker = gemini.get_ticker(symbol)
-        spot_price = Decimal(str(ticker["ask"]))
-        logger.info(f"Spot Ask Price for {symbol}: ${spot_price}")
+        book = gemini.get_book(symbol)
+        best_bid = Decimal(str(book["bids"][0]["price"]))
+        best_ask = Decimal(str(book["asks"][0]["price"]))
+        logger.info(f"{symbol} Book — Bid: {best_bid}, Ask: {best_ask}")
     except Exception as e:
-        error_message = f"Failed to get ticker for {symbol}: {str(e)}"
+        error_message = f"Failed to get order book for {symbol}: {str(e)}"
         logger.error(error_message)
-        send_alert("Crypto Buy Failed - Ticker", error_message)
+        send_alert("Crypto Buy Failed - Book Fetch", error_message)
         return {"error": error_message}
 
-    execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), ROUND_DOWN)
+    tick = Decimal("1").scaleb(-tick_size)
 
-    principal_usd = (effective_gross / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), ROUND_DOWN)
+    # ---------------------------
+    # 1️⃣ SAFE MAKER ATTEMPT
+    # ---------------------------
+    if maker_or_cancel:
+        execution_price = (best_bid - Decimal("0.01")).quantize(Decimal("0.01"), ROUND_DOWN)
+        active_fee_rate = fee_rate
+        attempt_mode = "maker"
+    else:
+        execution_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        active_fee_rate = fee_rate * Decimal("2")
+        attempt_mode = "taker_direct"
 
-    crypto_amount = (principal_usd / execution_price).quantize(
-        Decimal("1").scaleb(-tick_size), rounding=ROUND_DOWN
-    )
+    def compute_order(price, fee):
+        principal_usd = (effective_gross / (Decimal("1") + fee)).quantize(Decimal("0.01"), ROUND_DOWN)
+        crypto_amount = (principal_usd / price).quantize(tick, rounding=ROUND_DOWN)
+        return crypto_amount
+
+    crypto_amount = compute_order(execution_price, active_fee_rate)
 
     if crypto_amount < min_quantity:
-        error_message = f"Calculated {asset} amount ({crypto_amount}) is below minimum ({min_quantity})."
-        logger.error(error_message)
-        send_alert("Crypto Buy Failed - Order Too Small", error_message)
-        return {"error": error_message}
+        return {"error": f"{asset} amount below minimum"}
 
-    estimated_quote = (crypto_amount * execution_price).quantize(Decimal("0.01"))
-    MIN_QUOTE_VALUE = Decimal("15.00") if asset == "ETH" else Decimal("10.00")
-    if estimated_quote < MIN_QUOTE_VALUE:
-        error_message = f"Estimated {asset} order too small (${estimated_quote}) — skipping"
-        logger.error(error_message)
-        send_alert("Crypto Buy Failed - Order Too Small", error_message)
-        return {"error": error_message}
-
-    order_cost = (crypto_amount * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
-    order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
-    total_order_cost = (order_cost + order_fee).quantize(Decimal("0.01"), ROUND_DOWN)
-
-    logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (effective target: ${effective_gross})")
-
-    # STRICT BUMP LOOP — maximum possible without ever going over
-    tick = Decimal("1").scaleb(-tick_size)
+    # bump loop
     initial_crypto = crypto_amount
-
     while True:
         potential_crypto = crypto_amount + tick
         potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
-        potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_fee = (potential_cost * active_fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
         potential_total = potential_cost + potential_fee
-
         if potential_total > effective_gross:
             break
-
         crypto_amount = potential_crypto
-        order_cost = potential_cost
-        order_fee = potential_fee
-        total_order_cost = potential_total
-
-    if crypto_amount > initial_crypto:
-        under = effective_gross - total_order_cost
-        logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} "
-                    f"(exact or under by ${under:.2f})")
-
-    logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
-    logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} "
-                f"(original target: ${gross_amount}, effective: ${effective_gross})")
 
     order_payload = {
         "symbol": symbol,
@@ -173,22 +154,46 @@ def buy_crypto(
         "type": "exchange limit",
     }
 
-    if maker_or_cancel:
+    if attempt_mode == "maker":
         order_payload["options"] = ["maker-or-cancel"]
 
-    logger.info(f"Placing order for {asset}: {json.dumps(order_payload, indent=2)}")
+    logger.info(f"{asset} Attempting {attempt_mode.upper()} @ {execution_price}")
 
     try:
         result = gemini.place_order(order_payload)
-        logger.info(f"Order placed for {asset}: {result}")
-        return result
+        logger.info(f"{asset} {attempt_mode} success")
+        return {"mode": attempt_mode, "result": result}
     except Exception as e:
-        full_error = str(e)
-        logger.error(f"Order failed for {asset}: {full_error}")
-        send_alert(f"Crypto Buy Failed - {asset}", full_error)
-        return {"error": full_error}
+        if attempt_mode != "maker":
+            raise
+        logger.warning(f"{asset} Maker failed → switching to taker")
+
+    # ---------------------------
+    # 2️⃣ TAKER FALLBACK
+    # ---------------------------
+    execution_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    taker_fee = fee_rate * Decimal("2")
+    crypto_amount = compute_order(execution_price, taker_fee)
+
+    if crypto_amount < min_quantity:
+        return {"error": f"{asset} fallback amount below minimum"}
+
+    order_payload = {
+        "symbol": symbol,
+        "amount": str(crypto_amount),
+        "price": str(execution_price),
+        "side": "buy",
+        "type": "exchange limit",
+    }
+
+    logger.info(f"{asset} TAKER FALLBACK @ {execution_price}")
+    result = gemini.place_order(order_payload)
+    return {"mode": "taker_fallback", "result": result}
 
 
+# ----------------------------
+# LAMBDA HANDLER
+# ----------------------------
 def lambda_handler(event, context):
     try:
         public_key, private_key = get_api_keys()
