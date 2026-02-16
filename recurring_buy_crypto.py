@@ -24,13 +24,15 @@ BUY_CONFIG = {
         "tick_size": 8,
         "min_quantity": Decimal("0.00001"),
         "slippage_factor": Decimal("0.999"),
+        "maker_or_cancel": True,
     },
     "ETH": {
         "amount": ETH_AMOUNT,
         "symbol": "ethgusd",
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
-        "slippage_factor": Decimal("1.0000"),  # At ask - no more 406
+        "slippage_factor": Decimal("1.0001"),  # Slight premium above ask — forces acceptance
+        "maker_or_cancel": False,  # No maker-or-cancel — bypasses 406 validation
     },
 }
 
@@ -82,15 +84,15 @@ def buy_crypto(
     min_quantity: Decimal,
     slippage_factor: Decimal,
     fee_rate: Decimal,
+    maker_or_cancel: bool,
 ):
     gusd_balance = _get_gusd_available(gemini)
     logger.info(f"GUSD Available Balance: ${gusd_balance}")
 
-    # FLEXIBLE BALANCE: spend up to available, allow small shortfall
     effective_gross = min(gross_amount, gusd_balance)
-    SHORTFALL_TOLERANCE = Decimal("0.20")  # Allow up to 20 cents short without failing
+    SHORTFALL_TOLERANCE = Decimal("0.20")
     if effective_gross < gross_amount - SHORTFALL_TOLERANCE:
-        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available, need ${gross_amount} (short by more than tolerance)"
+        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available, need ${gross_amount} (short by too much)"
         logger.error(error_message)
         send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
         return {"error": error_message}
@@ -122,7 +124,6 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Order Too Small", error_message)
         return {"error": error_message}
 
-    # Min quote check
     estimated_quote = (crypto_amount * execution_price).quantize(Decimal("0.01"))
     MIN_QUOTE_VALUE = Decimal("15.00") if asset == "ETH" else Decimal("10.00")
     if estimated_quote < MIN_QUOTE_VALUE:
@@ -137,7 +138,7 @@ def buy_crypto(
 
     logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (effective target: ${effective_gross})")
 
-    # STRICT BUMP LOOP — maximum possible without ever going over effective target
+    # STRICT BUMP LOOP — maximum possible without ever going over
     tick = Decimal("1").scaleb(-tick_size)
     initial_crypto = crypto_amount
 
@@ -170,14 +171,16 @@ def buy_crypto(
         "price": str(execution_price),
         "side": "buy",
         "type": "exchange limit",
-        "options": ["maker-or-cancel"],
     }
+
+    if maker_or_cancel:
+        order_payload["options"] = ["maker-or-cancel"]
 
     logger.info(f"Placing order for {asset}: {json.dumps(order_payload, indent=2)}")
 
     try:
         result = gemini.place_order(order_payload)
-        logger.info(f"Maker Buy for {asset}: {result}")
+        logger.info(f"Order placed for {asset}: {result}")
         return result
     except Exception as e:
         full_error = str(e)
@@ -220,6 +223,7 @@ def lambda_handler(event, context):
                 min_quantity=cfg["min_quantity"],
                 slippage_factor=cfg["slippage_factor"],
                 fee_rate=FEE_RATE,
+                maker_or_cancel=cfg.get("maker_or_cancel", True),
             )
 
         if any("error" in r for r in results.values()):
