@@ -14,8 +14,8 @@ MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-# Gross allocations (target total GUSD spent per asset INCLUDING fee)
-BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+# Gross allocations (total GUSD spent including fee)
+BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 BUY_CONFIG = {
@@ -31,7 +31,7 @@ BUY_CONFIG = {
         "symbol": "ethgusd",
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
-        "slippage_factor": Decimal("0.998"),
+        "slippage_factor": Decimal("0.999"),  # Loosened slightly to help with acceptance
     },
 }
 
@@ -111,7 +111,7 @@ def buy_crypto(
 
     execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    # Calculate principal so principal + fee ≈ gross_amount
+    # Calculate principal so principal + fee = gross_amount exactly (in theory)
     principal_usd = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
     crypto_amount = (principal_usd / execution_price).quantize(
@@ -124,6 +124,14 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Order Too Small", error_message)
         return {"error": error_message}
 
+    # Add minimum order value check to prevent tiny orders (cause of 406 errors)
+    estimated_principal = (crypto_amount * execution_price).quantize(Decimal("0.01"))
+    if estimated_principal < Decimal("10.00"):  # Gemini soft min ~$10–$15 for some pairs
+        error_message = f"Estimated {asset} order too small (${estimated_principal}) — below Gemini minimum; skipping"
+        logger.error(error_message)
+        send_alert("Crypto Buy Failed - Order Too Small", error_message)
+        return {"error": error_message}
+
     # Final actual costs after quantization
     order_cost = (crypto_amount * execution_price).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
     order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
@@ -131,7 +139,7 @@ def buy_crypto(
 
     logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (target: ${gross_amount})")
 
-    # STRICT BUMP LOOP — tries maximum possible without ever going over target
+    # STRICT BUMP LOOP — never overspends even $0.01 (prefers under-spend if needed to hit exact)
     tick = Decimal("1").scaleb(-tick_size)
     initial_crypto = crypto_amount
 
@@ -141,7 +149,7 @@ def buy_crypto(
         potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
         potential_total = potential_cost + potential_fee
 
-        # Critical: stop BEFORE exceeding target — never overspend even 1 cent
+        # Stop BEFORE exceeding target (no over-spend allowed)
         if potential_total > gross_amount:
             break
 
@@ -152,7 +160,7 @@ def buy_crypto(
 
     if crypto_amount > initial_crypto:
         under = gross_amount - total_order_cost
-        logger.info(f"Bumped {asset} to {crypto_amount} → Total spend: ${total_order_cost} "
+        logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} "
                     f"(exact or under by ${under:.2f})")
 
     logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
@@ -166,6 +174,8 @@ def buy_crypto(
         "type": "exchange limit",
         "options": ["maker-or-cancel"],
     }
+
+    logger.info(f"Placing order for {asset}: {json.dumps(order_payload, indent=2)}")  # Added logging for debugging
 
     try:
         result = gemini.place_order(order_payload)
