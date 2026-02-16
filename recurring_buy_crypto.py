@@ -2,33 +2,32 @@ import json
 import logging
 import boto3
 import os
-from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
-
-import requests
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from shared.gemini_client import GeminiClient
 
 # ----------------------------
 # Configuration
 # ----------------------------
-
 TOTAL_DEPOSIT = Decimal("170")
-MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-# Target gross allocations (for reporting / intent). Actual spend may end up 1–2 cents under.
-BTC_TARGET = (MAX_BUY * (BTC_PERCENTAGE / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-ETH_TARGET = (MAX_BUY - BTC_TARGET).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+# Gross allocations (target total GUSD spent per asset INCLUDING fee)
+BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-ASSET_DEFAULTS = {
+BUY_CONFIG = {
     "BTC": {
+        "amount": BTC_AMOUNT,
         "symbol": "btcgusd",
         "tick_size": 8,
         "min_quantity": Decimal("0.00001"),
         "slippage_factor": Decimal("0.999"),
     },
     "ETH": {
+        "amount": ETH_AMOUNT,
         "symbol": "ethgusd",
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
@@ -59,9 +58,12 @@ def send_alert(subject: str, message: str) -> None:
 
 
 def get_api_keys():
-    response = ssm_client.get_parameter(Name="GeminiApiKeys", WithDecryption=True)
-    secret = json.loads(response["Parameter"]["Value"])
-    return secret["API key"], secret["API Secret"]
+    try:
+        response = ssm_client.get_parameter(Name="GeminiApiKeys", WithDecryption=True)
+        secret = json.loads(response["Parameter"]["Value"])
+        return secret["API key"], secret["API Secret"]
+    except Exception as e:
+        raise ValueError(f"Error retrieving API keys from AWS SSM Parameter Store: {str(e)}")
 
 
 def _get_gusd_available(gemini: GeminiClient) -> Decimal:
@@ -72,108 +74,89 @@ def _get_gusd_available(gemini: GeminiClient) -> Decimal:
     return Decimal("0")
 
 
-def _quant_step(tick_size: int) -> Decimal:
-    return Decimal("1").scaleb(-tick_size)
-
-
-def _get_execution_price(gemini: GeminiClient, symbol: str, slippage_factor: Decimal) -> Decimal:
-    ticker = gemini.get_ticker(symbol)
-    ask = Decimal(str(ticker["ask"]))
-    # Gemini quote currency is cents; keep that consistent.
-    return (ask * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-
-
-def _compute_cost_floor(execution_price: Decimal, crypto_amount: Decimal) -> Decimal:
-    return (execution_price * crypto_amount).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-
-
-def _compute_fee_floor(cost: Decimal, fee_rate: Decimal) -> Decimal:
-    return (cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-
-
-def _compute_fee_ceil(cost: Decimal, fee_rate: Decimal) -> Decimal:
-    return (cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_UP)
-
-
-def _required_funds_conservative(execution_price: Decimal, crypto_amount: Decimal, fee_rate: Decimal) -> Decimal:
-    """
-    Conservative funds check that matches why Gemini rejects orders:
-      cost: floor to cents
-      fee:  ceil to cents
-      required = cost + fee
-    """
-    cost = _compute_cost_floor(execution_price, crypto_amount)
-    fee = _compute_fee_ceil(cost, fee_rate)
-    return (cost + fee).quantize(Decimal("0.01"), rounding=ROUND_UP)
-
-
-def plan_order_to_cap(
-    *,
+def buy_crypto(
     gemini: GeminiClient,
     asset: str,
-    gross_cap: Decimal,
+    gross_amount: Decimal,
     symbol: str,
     tick_size: int,
     min_quantity: Decimal,
     slippage_factor: Decimal,
     fee_rate: Decimal,
-) -> dict:
-    """
-    Plans a maker-or-cancel limit order sized to:
-      - NEVER require more than gross_cap under the conservative requirement model.
-      - Spend as close to gross_cap as possible (max out by tick increments).
-    """
-    gross_cap = gross_cap.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+):
+    try:
+        gusd_balance = _get_gusd_available(gemini)
+        logger.info(f"GUSD Available Balance: ${gusd_balance}")
+    except Exception as e:
+        error_message = f"Balance check failed for {asset}: {str(e)}"
+        logger.error(error_message)
+        send_alert("Crypto Buy Failed - Balance Check", error_message)
+        return {"error": error_message}
 
-    if gross_cap <= Decimal("0.00"):
-        return {"skipped": True, "reason": "gross_cap <= 0", "gross_cap": str(gross_cap)}
+    if gusd_balance < gross_amount:
+        error_message = f"Insufficient GUSD balance for {asset}: ${gusd_balance} available, need ${gross_amount}."
+        logger.error(error_message)
+        send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
+        return {"error": error_message}
 
-    execution_price = _get_execution_price(gemini, symbol, slippage_factor)
-    step = _quant_step(tick_size)
+    try:
+        ticker = gemini.get_ticker(symbol)
+        spot_price = Decimal(str(ticker["ask"]))
+        logger.info(f"Spot Ask Price for {symbol}: ${spot_price}")
+    except Exception as e:
+        error_message = f"Failed to get ticker for {symbol}: {str(e)}"
+        logger.error(error_message)
+        send_alert("Crypto Buy Failed - Ticker", error_message)
+        return {"error": error_message}
 
-    # Start from a safe under-estimate.
-    # (gross / (price*(1+fee))) is a decent lower bound; final acceptance uses conservative check.
-    denom = execution_price * (Decimal("1") + fee_rate)
-    if denom <= Decimal("0"):
-        return {"skipped": True, "reason": "bad denom", "execution_price": str(execution_price)}
+    execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    crypto_amount = (gross_cap / denom).quantize(step, rounding=ROUND_DOWN)
+    # Calculate principal so principal + fee ≈ gross_amount
+    principal_usd = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    # Ensure minimum
+    crypto_amount = (principal_usd / execution_price).quantize(
+        Decimal("1").scaleb(-tick_size), rounding=ROUND_DOWN
+    )
+
     if crypto_amount < min_quantity:
-        return {
-            "skipped": True,
-            "reason": f"{asset}: below min quantity",
-            "gross_cap": str(gross_cap),
-            "execution_price": str(execution_price),
-            "crypto_amount": str(crypto_amount),
-            "min_quantity": str(min_quantity),
-        }
+        error_message = f"Calculated {asset} amount ({crypto_amount}) is below minimum ({min_quantity})."
+        logger.error(error_message)
+        send_alert("Crypto Buy Failed - Order Too Small", error_message)
+        return {"error": error_message}
 
-    # Bump by one tick while the CONSERVATIVE required funds still fits in cap.
+    # Final actual costs after quantization
+    order_cost = (crypto_amount * execution_price).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    total_order_cost = (order_cost + order_fee).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+    logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (target: ${gross_amount})")
+
+    # STRICT BUMP LOOP — tries maximum possible without ever going over target
+    tick = Decimal("1").scaleb(-tick_size)
+    initial_crypto = crypto_amount
+
     while True:
-        cand = (crypto_amount + step).quantize(step, rounding=ROUND_DOWN)
-        req = _required_funds_conservative(execution_price, cand, fee_rate)
-        if req > gross_cap:
+        potential_crypto = crypto_amount + tick
+        potential_cost = (potential_crypto * execution_price).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
+        potential_total = potential_cost + potential_fee
+
+        # Critical: stop BEFORE exceeding target — never overspend even 1 cent
+        if potential_total > gross_amount:
             break
-        crypto_amount = cand
 
-    # Final requirement + reporting fields
-    order_cost = _compute_cost_floor(execution_price, crypto_amount)
-    order_fee_floor = _compute_fee_floor(order_cost, fee_rate)
-    total_cost_floor = (order_cost + order_fee_floor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        crypto_amount = potential_crypto
+        order_cost = potential_cost
+        order_fee = potential_fee
+        total_order_cost = potential_total
 
-    required_conservative = _required_funds_conservative(execution_price, crypto_amount, fee_rate)
-    fee_conservative = _compute_fee_ceil(order_cost, fee_rate)
+    if crypto_amount > initial_crypto:
+        under = gross_amount - total_order_cost
+        logger.info(f"Bumped {asset} to {crypto_amount} → Total spend: ${total_order_cost} "
+                    f"(exact or under by ${under:.2f})")
 
-    if required_conservative > gross_cap:
-        # Very defensive; should not happen due to loop.
-        return {
-            "skipped": True,
-            "reason": f"{asset}: cannot fit within cap under conservative hold",
-            "gross_cap": str(gross_cap),
-            "required_conservative": str(required_conservative),
-        }
+    logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
+    logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
 
     order_payload = {
         "symbol": symbol,
@@ -184,39 +167,15 @@ def plan_order_to_cap(
         "options": ["maker-or-cancel"],
     }
 
-    return {
-        "asset": asset,
-        "gross_cap": str(gross_cap),
-        "execution_price": str(execution_price),
-        "crypto_amount": str(crypto_amount),
-        "order_cost": str(order_cost),
-        "order_fee_floor": str(order_fee_floor),
-        "total_cost_floor": str(total_cost_floor),
-        "fee_conservative": str(fee_conservative),
-        "required_conservative": str(required_conservative),
-        "order_payload": order_payload,
-    }
-
-
-def place_planned_order(*, gemini: GeminiClient, plan: dict) -> dict:
-    if plan.get("skipped"):
-        return plan
-    if "order_payload" not in plan:
-        return {"error": "Invalid plan", "plan": plan}
-
     try:
-        result = gemini.place_order(plan["order_payload"])
-        return {"placed": True, "plan": plan, "result": result}
-    except requests.exceptions.HTTPError as e:
-        detail = ""
-        try:
-            detail = e.response.text if e.response is not None else ""
-        except Exception:
-            detail = ""
-        msg = f"{str(e)}" + (f" | response: {detail}" if detail else "")
-        return {"error": msg, "plan": plan}
+        result = gemini.place_order(order_payload)
+        logger.info(f"Maker Buy for {asset}: {result}")
+        return result
     except Exception as e:
-        return {"error": str(e), "plan": plan}
+        error_message = f"Order failed for {asset}: {str(e)}"
+        logger.error(error_message)
+        send_alert(f"Crypto Buy Failed - {asset}", error_message)
+        return {"error": error_message}
 
 
 def lambda_handler(event, context):
@@ -224,99 +183,44 @@ def lambda_handler(event, context):
         public_key, private_key = get_api_keys()
         gemini = GeminiClient(public_key, private_key)
 
-        # 1) Fetch maker fee tier dynamically
+        # Dynamically fetch your actual maker fee tier
         try:
             notional_volume = gemini.get_notional_volume()
-            maker_bps = int(notional_volume.get("api_maker_fee_bps", 20))
-            fee_rate = (Decimal(maker_bps) / Decimal("10000")).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
-            logger.info(f"Dynamic Maker Fee Rate: {fee_rate} ({maker_bps} bps)")
+            maker_bps = int(notional_volume.get('api_maker_fee_bps', 20))  # Default low-volume tier
+            FEE_RATE = Decimal(maker_bps) / Decimal("10000")
+            logger.info(f"Dynamic Maker Fee Rate: {FEE_RATE * 100:.2f}% ({maker_bps} bps)")
         except Exception as e:
-            msg = f"Failed to fetch fee tier: {str(e)}. Using default 0.20%."
-            logger.warning(msg)
-            send_alert("Fee Rate Fetch Warning", msg)
-            maker_bps = 20
-            fee_rate = Decimal("0.0020")
+            error_message = f"Failed to fetch fee tier: {str(e)}. Using default 0.20%."
+            logger.warning(error_message)
+            send_alert("Fee Rate Fetch Warning", error_message)
+            FEE_RATE = Decimal("0.002")  # 0.20%
 
-        # 2) Coarse guard: must have at least MAX_BUY available to attempt the run
-        gusd_before = _get_gusd_available(gemini).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-        logger.info(f"GUSD available before orders: ${gusd_before}")
-        logger.info(f"MAX_BUY: ${MAX_BUY} | Targets BTC ${BTC_TARGET} / ETH ${ETH_TARGET}")
-
-        if gusd_before < MAX_BUY:
-            error_message = f"Insufficient GUSD: ${gusd_before} < ${MAX_BUY} required."
+        # Check overall balance
+        gusd_balance = _get_gusd_available(gemini)
+        if gusd_balance < MAX_BUY:
+            error_message = f"Insufficient GUSD: ${gusd_balance} < ${MAX_BUY} required."
             logger.error(error_message)
             send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
             return {"statusCode": 400, "body": json.dumps({"error": error_message})}
 
-        # 3) Plan BTC to BTC_TARGET (never exceed under conservative hold model)
-        btc_plan = plan_order_to_cap(
-            gemini=gemini,
-            asset="BTC",
-            gross_cap=BTC_TARGET,
-            fee_rate=fee_rate,
-            **ASSET_DEFAULTS["BTC"],
-        )
-
-        # Determine remaining budget based on conservative requirement (NOT on balances)
-        if btc_plan.get("skipped"):
-            btc_required = Decimal("0.00")
-        else:
-            btc_required = Decimal(str(btc_plan["required_conservative"]))
-
-        remaining_budget = (MAX_BUY - btc_required).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-        if remaining_budget < Decimal("0.00"):
-            remaining_budget = Decimal("0.00")
-
-        # 4) Plan ETH as remainder, capped by target and remaining budget
-        eth_cap = min(ETH_TARGET, remaining_budget).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-
-        if eth_cap <= Decimal("0.00"):
-            eth_plan = {
-                "skipped": True,
-                "reason": "No remaining budget after BTC conservative hold",
-                "remaining_budget": str(remaining_budget),
-                "eth_target": str(ETH_TARGET),
-            }
-            eth_required = Decimal("0.00")
-        else:
-            eth_plan = plan_order_to_cap(
-                gemini=gemini,
-                asset="ETH",
-                gross_cap=eth_cap,
-                fee_rate=fee_rate,
-                **ASSET_DEFAULTS["ETH"],
-            )
-            eth_required = Decimal("0.00") if eth_plan.get("skipped") else Decimal(str(eth_plan["required_conservative"]))
-
-        # 5) Final sanity: conservative required totals must be <= MAX_BUY
-        total_required = (btc_required + eth_required).quantize(Decimal("0.01"), rounding=ROUND_UP)
-        if total_required > MAX_BUY:
-            # This should be impossible now, but keep a guard.
-            msg = f"Internal safety stop: required {total_required} > MAX_BUY {MAX_BUY}"
-            logger.error(msg)
-            send_alert("Crypto Buy Failed - Safety Stop", msg)
-            return {"statusCode": 500, "body": json.dumps({"error": msg})}
-
-        # 6) Place orders (BTC first, then ETH)
+        # Execute buys
         results = {}
-        results["BTC"] = place_planned_order(gemini=gemini, plan=btc_plan)
-        results["ETH"] = place_planned_order(gemini=gemini, plan=eth_plan)
+        for asset, cfg in BUY_CONFIG.items():
+            results[asset] = buy_crypto(
+                gemini=gemini,
+                asset=asset,
+                gross_amount=cfg["amount"],
+                symbol=cfg["symbol"],
+                tick_size=cfg["tick_size"],
+                min_quantity=cfg["min_quantity"],
+                slippage_factor=cfg["slippage_factor"],
+                fee_rate=FEE_RATE,
+            )
 
-        if any(isinstance(v, dict) and "error" in v for v in results.values()):
+        if any("error" in r for r in results.values()):
             send_alert("Crypto Buy Completed With Errors", json.dumps(results, indent=2))
 
-        body = {
-            "fee_rate_bps": maker_bps,
-            "fee_rate": str(fee_rate),
-            "max_buy": str(MAX_BUY),
-            "gusd_before": str(gusd_before),
-            "targets": {"btc": str(BTC_TARGET), "eth": str(ETH_TARGET)},
-            "planned_caps": {"btc_cap": str(BTC_TARGET), "eth_cap": str(eth_cap)},
-            "required_conservative": {"btc": str(btc_required), "eth": str(eth_required), "total": str(total_required)},
-            "results": results,
-        }
-
-        return {"statusCode": 200, "body": json.dumps(body)}
+        return {"statusCode": 200, "body": json.dumps(results)}
 
     except Exception as e:
         logger.error(f"Lambda execution failed: {str(e)}")
