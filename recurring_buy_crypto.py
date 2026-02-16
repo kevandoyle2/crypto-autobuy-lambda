@@ -14,8 +14,8 @@ MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 BTC_PERCENTAGE = Decimal("66")
 ETH_PERCENTAGE = Decimal("34")
 
-# Gross allocations (target total GUSD spent per asset INCLUDING fee)
-BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+# Gross allocations
+BTC_AMOUNT = (MAX_BUY * (BTC_PERCENTAGE / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 ETH_AMOUNT = (MAX_BUY - BTC_AMOUNT).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 BUY_CONFIG = {
@@ -31,7 +31,7 @@ BUY_CONFIG = {
         "symbol": "ethgusd",
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
-        "slippage_factor": Decimal("0.9995"),  # Loosened to reduce 406 price rejection risk
+        "slippage_factor": Decimal("0.9995"),  # Increased to 0.05% below ask - fixes 406
     },
 }
 
@@ -63,7 +63,7 @@ def get_api_keys():
         secret = json.loads(response["Parameter"]["Value"])
         return secret["API key"], secret["API Secret"]
     except Exception as e:
-        raise ValueError(f"Error retrieving API keys from AWS SSM Parameter Store: {str(e)}")
+        raise ValueError(f"Error retrieving API keys: {str(e)}")
 
 
 def _get_gusd_available(gemini: GeminiClient) -> Decimal:
@@ -93,17 +93,11 @@ def buy_crypto(
         send_alert("Crypto Buy Failed - Balance Check", error_message)
         return {"error": error_message}
 
-    # FLEXIBLE BALANCE CHECK: spend up to available, but skip if too small
-    effective_gross = min(gross_amount, gusd_balance)
-    MIN_REASONABLE = Decimal("10.00")  # Gemini soft min for order value
-    if effective_gross < MIN_REASONABLE:
-        error_message = f"Insufficient GUSD for {asset}: ${gusd_balance} available (too small to proceed)"
+    if gusd_balance < gross_amount:
+        error_message = f"Insufficient GUSD balance for {asset}: ${gusd_balance} available, need ${gross_amount}."
         logger.error(error_message)
         send_alert("Crypto Buy Failed - Insufficient Funds", error_message)
         return {"error": error_message}
-
-    if effective_gross < gross_amount:
-        logger.info(f"Adjusted {asset} gross target from ${gross_amount} to ${effective_gross} (limited by available balance)")
 
     try:
         ticker = gemini.get_ticker(symbol)
@@ -117,7 +111,7 @@ def buy_crypto(
 
     execution_price = (spot_price * slippage_factor).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
-    principal_usd = (effective_gross / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    principal_usd = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), ROUND_DOWN)
 
     crypto_amount = (principal_usd / execution_price).quantize(
         Decimal("1").scaleb(-tick_size), rounding=ROUND_DOWN
@@ -131,7 +125,8 @@ def buy_crypto(
 
     # NEW: Minimum quote value check to prevent 406 rejections
     estimated_quote = (crypto_amount * execution_price).quantize(Decimal("0.01"))
-    if estimated_quote < MIN_REASONABLE:
+    MIN_QUOTE_VALUE = Decimal("15.00")  # Raised for ETH safety
+    if estimated_quote < MIN_QUOTE_VALUE:
         error_message = f"Estimated {asset} order too small (${estimated_quote}) — below Gemini minimum; skipping"
         logger.error(error_message)
         send_alert("Crypto Buy Failed - Order Too Small", error_message)
@@ -142,9 +137,9 @@ def buy_crypto(
     order_fee = (order_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
     total_order_cost = (order_cost + order_fee).quantize(Decimal("0.01"), ROUND_DOWN)
 
-    logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (effective target: ${effective_gross})")
+    logger.info(f"Initial: {crypto_amount} {asset} -> Total: ${total_order_cost} (target: ${gross_amount})")
 
-    # STRICT BUMP LOOP — maximum possible without ever going over effective target
+    # STRICT BUMP LOOP — maximum possible without ever going over
     tick = Decimal("1").scaleb(-tick_size)
     initial_crypto = crypto_amount
 
@@ -154,8 +149,7 @@ def buy_crypto(
         potential_fee = (potential_cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
         potential_total = potential_cost + potential_fee
 
-        # Never overspend — stop before exceeding effective target
-        if potential_total > effective_gross:
+        if potential_total > gross_amount:
             break
 
         crypto_amount = potential_crypto
@@ -164,13 +158,12 @@ def buy_crypto(
         total_order_cost = potential_total
 
     if crypto_amount > initial_crypto:
-        under = effective_gross - total_order_cost
+        under = gross_amount - total_order_cost
         logger.info(f"Bumped {asset} to {crypto_amount} -> Total spend: ${total_order_cost} "
                     f"(exact or under by ${under:.2f})")
 
     logger.info(f"Final Order: {crypto_amount} {asset} at ${execution_price}")
-    logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} "
-                f"(original target: ${gross_amount}, effective: ${effective_gross})")
+    logger.info(f"Principal: ${order_cost}, Fee: ${order_fee}, Total spent: ${total_order_cost} (target: ${gross_amount})")
 
     order_payload = {
         "symbol": symbol,
@@ -188,10 +181,10 @@ def buy_crypto(
         logger.info(f"Maker Buy for {asset}: {result}")
         return result
     except Exception as e:
-        error_message = f"Order failed for {asset}: {str(e)}"
-        logger.error(error_message)
-        send_alert(f"Crypto Buy Failed - {asset}", error_message)
-        return {"error": error_message}
+        full_error = str(e)
+        logger.error(f"Order failed for {asset}: {full_error}")
+        send_alert(f"Crypto Buy Failed - {asset}", full_error)
+        return {"error": full_error}
 
 
 def lambda_handler(event, context):
