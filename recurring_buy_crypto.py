@@ -9,7 +9,8 @@ from shared.gemini_client import GeminiClient
 # CONFIGURATION
 # ============================================================
 
-GUSD_FLOOR = Decimal("10.00")  # Hard floor: never spend below this
+GUSD_FLOOR = Decimal("1.00")  # Hard floor: never spend below this
+
 TOTAL_DEPOSIT = Decimal("170")
 MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 
@@ -109,7 +110,7 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
     tick = _quant_step(config["tick_size"])
 
     def compute_qty(price, fee_rate):
-        principal = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), ROUND_DOWN)
+        principal = (gross_amount / (Decimal("1") + fee_rate)).quantize(Decimal("0.01"), ROUND_HALF_UP)
         qty = (principal / price).quantize(tick, ROUND_DOWN)
         return qty
 
