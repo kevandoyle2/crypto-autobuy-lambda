@@ -89,6 +89,10 @@ class GeminiClient:
 
     def get_ticker(self, symbol: str):
         return self._public_get(f"/v2/ticker/{symbol}")
+    
+    def get_book(self, symbol: str):
+        return self._public_get(f"/v1/book/{symbol}")
+
 
     def place_order(self, order_details: Dict[str, Any]):
         return self._private_request("/v1/order/new", order_details)
