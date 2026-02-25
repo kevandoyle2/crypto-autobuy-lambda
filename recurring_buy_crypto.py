@@ -179,17 +179,53 @@ def lambda_handler(event, context=None):
         results["BTC"] = execute_buy(gemini, "BTC", BUY_CONFIG["BTC"], maker_fee, gusd_balance)
         results["ETH"] = execute_buy(gemini, "ETH", BUY_CONFIG["ETH"], maker_fee, gusd_balance)
 
+        # ==========================================
+        # Run Outcome Classification
+        # ==========================================
+
+        statuses = []
+
+        for asset, result in results.items():
+            if result.get("skipped"):
+                statuses.append("skipped")
+            elif "mode" in result:
+                statuses.append("filled")
+            else:
+                statuses.append("unknown")
+
+        if all(s == "skipped" for s in statuses):
+            classification = "Skipped"
+        elif all(s == "filled" for s in statuses):
+            classification = "Success"
+        elif "filled" in statuses and "skipped" in statuses:
+            classification = "Partial"
+        else:
+            classification = "Unknown"
+
+        summary = {
+            "classification": classification,
+            "balance": str(gusd_balance),
+            "results": results
+        }
+
+        subject = f"Crypto Buy Lambda - {classification}"
+
+        try:
+            send_alert(
+                subject=subject,
+                message=json.dumps(summary, indent=2)
+            )
+        except Exception as e:
+            logger.error(f"Summary SNS failed: {e}")
+
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "balance": str(gusd_balance),
-                "results": results
-            }, indent=2)
+            "body": json.dumps(summary, indent=2)
         }
 
     except Exception as e:
         logger.exception("Lambda execution failed")
-        send_alert("Crypto Buy Lambda Fatal Error", str(e))
+        send_alert("Crypto Buy Lambda - Error", str(e))
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)})
