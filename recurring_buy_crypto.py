@@ -167,6 +167,34 @@ def lambda_handler(event, context=None):
 
         gusd_balance = get_gusd_balance(gemini)
 
+        # ==========================================
+        # Full Buy Or Skip
+        # ==========================================
+
+        required_balance = (MAX_BUY + GUSD_FLOOR).quantize(Decimal("0.01"))
+
+        if gusd_balance < required_balance:
+            results = {
+                "BTC": {"skipped": True, "reason": "Insufficient funds for full scheduled buy"},
+                "ETH": {"skipped": True, "reason": "Insufficient funds for full scheduled buy"}
+            }
+
+            summary = {
+                "classification": "Skipped",
+                "balance": str(gusd_balance),
+                "required_balance": str(required_balance),
+                "results": results
+            }
+
+            subject = "Crypto Buy Lambda - Skipped (Insufficient Full Funds)"
+
+            send_alert(subject, json.dumps(summary, indent=2))
+
+            return {
+                "statusCode": 200,
+                "body": json.dumps(summary, indent=2)
+            }
+
         # Fetch dynamic maker fee
         try:
             nv = gemini.get_notional_volume()
