@@ -79,7 +79,7 @@ class GeminiClient:
         except ValueError:
             raise ValueError(f"Non-JSON response from Gemini {endpoint}: {response.text}")
 
-    # ---------- Public API (compatible with your existing code) ----------
+    # ---------- Public API ----------
 
     def get_balance(self):
         return self._private_request("/v1/balances")
