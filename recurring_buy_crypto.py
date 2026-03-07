@@ -114,7 +114,7 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         qty = (principal / price).quantize(tick, ROUND_DOWN)
         return qty
 
-    # 1️⃣ MAKER ATTEMPT
+    # MAKER ATTEMPT
     maker_price = (best_bid - Decimal("0.01")).quantize(Decimal("0.01"), ROUND_DOWN)
     qty = compute_qty(maker_price, maker_fee)
 
@@ -134,7 +134,7 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         except Exception:
             logger.info(f"{asset_name}: Maker failed → fallback")
 
-    # 2️⃣ TAKER FALLBACK
+    # TAKER FALLBACK
     taker_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
     taker_fee = maker_fee * Decimal("2")
     qty = compute_qty(taker_price, taker_fee)
