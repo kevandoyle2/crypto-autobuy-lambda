@@ -115,7 +115,19 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         return qty
 
     # MAKER ATTEMPT
-    maker_price = (best_bid - Decimal("0.01")).quantize(Decimal("0.01"), ROUND_DOWN)
+
+    spread = best_ask - best_bid
+
+    # Minimum distance to guarantee maker behavior
+    min_offset = Decimal("0.02")
+
+    # Adaptive offset: half the spread, capped
+    adaptive_offset = min(spread / 2, Decimal("0.05"))
+
+    offset = max(min_offset, adaptive_offset)
+
+    maker_price = (best_bid - offset).quantize(Decimal("0.01"), ROUND_DOWN)
+    
     qty = compute_qty(maker_price, maker_fee)
 
     if qty >= config["min_quantity"]:
