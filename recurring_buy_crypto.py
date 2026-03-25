@@ -114,39 +114,72 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         qty = (principal / price).quantize(tick, ROUND_DOWN)
         return qty
 
-    # MAKER ATTEMPT
+    # =========================
+    # MAKER ATTEMPT #1 (safe)
+    # =========================
 
     spread = best_ask - best_bid
 
     min_offset = Decimal("0.02")
     adaptive_offset = min(spread / 2, Decimal("0.05"))
 
-    offset = min(best_bid - Decimal("0.01"), max(min_offset, adaptive_offset))
+    offset_1 = min(best_bid - Decimal("0.01"), max(min_offset, adaptive_offset))
 
-    maker_price = max(
+    maker_price_1 = max(
         Decimal("0.01"),
-        (best_bid - offset)
+        (best_bid - offset_1)
     ).quantize(Decimal("0.01"), ROUND_DOWN)
 
-    qty = compute_qty(maker_price, maker_fee)
+    qty = compute_qty(maker_price_1, maker_fee)
 
-    if qty >= config["min_quantity"]:
+    def try_maker(price, qty):
         payload = {
             "symbol": symbol,
             "amount": str(qty),
-            "price": str(maker_price),
+            "price": str(price),
             "side": "buy",
             "type": "exchange limit",
             "options": ["maker-or-cancel"],
         }
-        try:
-            logger.info(f"{asset_name}: Maker attempt @ {maker_price}")
-            result = gemini.place_order(payload)
-            return {"mode": "maker", "result": result}
-        except Exception:
-            logger.info(f"{asset_name}: Maker failed → fallback")
+        return gemini.place_order(payload)
 
+    # Attempt 1
+    if qty >= config["min_quantity"]:
+        try:
+            logger.info(f"{asset_name}: Maker attempt #1 @ {maker_price_1}")
+            result = try_maker(maker_price_1, qty)
+            return {"mode": "maker_1", "result": result}
+        except Exception:
+            logger.info(f"{asset_name}: Maker #1 failed")
+
+    # =========================
+    # MAKER ATTEMPT #2 (closer)
+    # =========================
+
+    # Step closer, but STILL below best_bid
+    offset_2 = offset_1 / 2
+
+    offset_2 = min(best_bid - Decimal("0.01"), offset_2)
+
+    maker_price_2 = max(
+        Decimal("0.01"),
+        (best_bid - offset_2)
+    ).quantize(Decimal("0.01"), ROUND_DOWN)
+
+    qty = compute_qty(maker_price_2, maker_fee)
+
+    if qty >= config["min_quantity"]:
+        try:
+            logger.info(f"{asset_name}: Maker attempt #2 @ {maker_price_2}")
+            result = try_maker(maker_price_2, qty)
+            return {"mode": "maker_2", "result": result}
+        except Exception:
+            logger.info(f"{asset_name}: Maker #2 failed → fallback")
+
+    # =========================
     # TAKER FALLBACK
+    # =========================
+
     taker_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
     taker_fee = maker_fee * Decimal("2")
     qty = compute_qty(taker_price, taker_fee)
