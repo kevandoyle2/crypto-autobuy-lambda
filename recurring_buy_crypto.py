@@ -97,8 +97,12 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
     gross_amount = config["amount"]
 
     # enforce GUSD floor
-    available_to_spend = max(Decimal("0"), (gusd_balance - GUSD_FLOOR).quantize(Decimal("0.01"), ROUND_DOWN))
+    available_to_spend = max(
+        Decimal("0"),
+        (gusd_balance - GUSD_FLOOR).quantize(Decimal("0.01"), ROUND_DOWN)
+    )
     gross_amount = min(gross_amount, available_to_spend)
+
     if gross_amount <= Decimal("0"):
         logger.info(f"{asset_name}: Skipped (floor prevents spend)")
         return {"skipped": True, "reason": "GUSD floor prevents spend"}
@@ -115,74 +119,23 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         return qty
 
     # =========================
-    # MAKER ATTEMPT #1 (safe)
+    # PASSIVE LIMIT ORDER
     # =========================
 
     spread = best_ask - best_bid
 
-    min_offset = Decimal("0.02")
+    # Slightly more conservative buffer to reduce accidental taker fills
+    min_offset = Decimal("0.03")
     adaptive_offset = min(spread / 2, Decimal("0.05"))
 
-    offset_1 = min(best_bid - Decimal("0.01"), max(min_offset, adaptive_offset))
+    offset = min(best_bid - Decimal("0.01"), max(min_offset, adaptive_offset))
 
-    maker_price_1 = max(
+    price = max(
         Decimal("0.01"),
-        (best_bid - offset_1)
+        (best_bid - offset)
     ).quantize(Decimal("0.01"), ROUND_DOWN)
 
-    qty = compute_qty(maker_price_1, maker_fee)
-
-    def try_maker(price, qty):
-        payload = {
-            "symbol": symbol,
-            "amount": str(qty),
-            "price": str(price),
-            "side": "buy",
-            "type": "exchange limit",
-            "options": ["maker-or-cancel"],
-        }
-        return gemini.place_order(payload)
-
-    # Attempt 1
-    if qty >= config["min_quantity"]:
-        try:
-            logger.info(f"{asset_name}: Maker attempt #1 @ {maker_price_1}")
-            result = try_maker(maker_price_1, qty)
-            return {"mode": "maker_1", "result": result}
-        except Exception:
-            logger.info(f"{asset_name}: Maker #1 failed")
-
-    # =========================
-    # MAKER ATTEMPT #2 (closer)
-    # =========================
-
-    # Step closer, but STILL below best_bid
-    offset_2 = offset_1 / 2
-
-    offset_2 = min(best_bid - Decimal("0.01"), offset_2)
-
-    maker_price_2 = max(
-        Decimal("0.01"),
-        (best_bid - offset_2)
-    ).quantize(Decimal("0.01"), ROUND_DOWN)
-
-    qty = compute_qty(maker_price_2, maker_fee)
-
-    if qty >= config["min_quantity"]:
-        try:
-            logger.info(f"{asset_name}: Maker attempt #2 @ {maker_price_2}")
-            result = try_maker(maker_price_2, qty)
-            return {"mode": "maker_2", "result": result}
-        except Exception:
-            logger.info(f"{asset_name}: Maker #2 failed → fallback")
-
-    # =========================
-    # TAKER FALLBACK
-    # =========================
-
-    taker_price = (best_ask + Decimal("0.01")).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    taker_fee = maker_fee * Decimal("2")
-    qty = compute_qty(taker_price, taker_fee)
+    qty = compute_qty(price, maker_fee)
 
     if qty < config["min_quantity"]:
         error_msg = f"{asset_name} below minimum trade size"
@@ -192,14 +145,15 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
     payload = {
         "symbol": symbol,
         "amount": str(qty),
-        "price": str(taker_price),
+        "price": str(price),
         "side": "buy",
         "type": "exchange limit",
     }
 
-    logger.info(f"{asset_name}: Taker fallback @ {taker_price}")
+    logger.info(f"{asset_name}: Passive limit @ {price}")
     result = gemini.place_order(payload)
-    return {"mode": "taker_fallback", "result": result}
+
+    return {"mode": "passive_limit", "result": result}
 
 # ============================================================
 # LAMBDA HANDLER
