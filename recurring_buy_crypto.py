@@ -2,6 +2,7 @@ import json
 import logging
 import boto3
 import os
+import concurrent.futures
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from shared.gemini_client import GeminiClient
 
@@ -26,14 +27,20 @@ BUY_CONFIG = {
         "amount": BTC_AMOUNT,
         "tick_size": 8,
         "min_quantity": Decimal("0.00001"),
+        "price_tick": Decimal("0.01"),
     },
     "ETH": {
         "symbol": "ethgusd",
         "amount": ETH_AMOUNT,
         "tick_size": 6,
         "min_quantity": Decimal("0.001"),
+        "price_tick": Decimal("0.01"),
     },
 }
+
+# How many price ticks below best bid to sit.
+# 1 tick is enough to be passive; more = slower fill but safer maker rate.
+PASSIVE_TICKS_BELOW_BID = 1
 
 # ============================================================
 # AWS CLIENTS + LOGGING
@@ -57,11 +64,7 @@ def send_alert(subject: str, message: str):
     if not SNS_TOPIC_ARN:
         return
     try:
-        sns_client.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message
-        )
+        sns_client.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
     except Exception as e:
         logger.error(f"SNS failed: {e}")
 
@@ -83,65 +86,59 @@ def get_gusd_balance(gemini: GeminiClient) -> Decimal:
 def _quant_step(tick_size: int) -> Decimal:
     return Decimal("1").scaleb(-tick_size)
 
-def _compute_totals(price: Decimal, qty: Decimal, fee_rate: Decimal):
-    cost = (price * qty).quantize(Decimal("0.01"), ROUND_DOWN)
-    fee = (cost * fee_rate).quantize(Decimal("0.01"), ROUND_DOWN)
-    total = (cost + fee).quantize(Decimal("0.01"), ROUND_DOWN)
-    return cost, fee, total
-
 # ============================================================
 # CORE ORDER ENGINE
 # ============================================================
 
-def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
+def execute_buy(gemini: GeminiClient, asset_name: str, config: dict, maker_fee: Decimal, gusd_balance: Decimal) -> dict:
     gross_amount = config["amount"]
 
-    # enforce GUSD floor
     available_to_spend = max(
         Decimal("0"),
-        (gusd_balance - GUSD_FLOOR).quantize(Decimal("0.01"), ROUND_DOWN)
+        (gusd_balance - GUSD_FLOOR).quantize(Decimal("0.01"), ROUND_DOWN),
     )
     gross_amount = min(gross_amount, available_to_spend)
 
     if gross_amount <= Decimal("0"):
-        logger.info(f"{asset_name}: Skipped (floor prevents spend)")
+        logger.info(f"{asset_name}: Skipped (GUSD floor prevents spend)")
         return {"skipped": True, "reason": "GUSD floor prevents spend"}
 
     symbol = config["symbol"]
+    tick = _quant_step(config["tick_size"])
+    price_tick = config["price_tick"]
+
     book = gemini.get_book(symbol)
     best_bid = Decimal(str(book["bids"][0]["price"]))
     best_ask = Decimal(str(book["asks"][0]["price"]))
-    tick = _quant_step(config["tick_size"])
-
-    def compute_qty(price, fee_rate):
-        principal = gross_amount / (Decimal("1") + fee_rate * 2)
-        qty = (principal / price).quantize(tick, ROUND_DOWN)
-        return qty
-
-    # =========================
-    # PASSIVE LIMIT ORDER
-    # =========================
-
     spread = best_ask - best_bid
 
-    # Slightly more conservative buffer to reduce accidental taker fills
-    min_offset = Decimal("0.03")
-    adaptive_offset = min(spread / 2, Decimal("0.05"))
+    logger.info(f"{asset_name}: best_bid={best_bid} best_ask={best_ask} spread={spread}")
 
-    offset = min(best_bid - Decimal("0.01"), max(min_offset, adaptive_offset))
+    # Sit 1 tick below best bid — passive, earmarks GUSD immediately.
+    price = (best_bid - PASSIVE_TICKS_BELOW_BID * price_tick).quantize(price_tick, ROUND_DOWN)
+    price = max(price_tick, price)
 
-    price = max(
-        Decimal("0.01"),
-        (best_bid - offset)
-    ).quantize(Decimal("0.01"), ROUND_DOWN)
+    # Fee-inclusive sizing: gross_amount is the hard ceiling including fees.
+    # qty = floor(gross_amount / (price * (1 + maker_fee)), tick)
+    # Guarantees cost + fee never exceeds gross_amount.
+    qty = (gross_amount / (price * (Decimal("1") + maker_fee))).quantize(tick, ROUND_DOWN)
 
-    qty = compute_qty(price, maker_fee)
+    estimated_fee = (price * qty * maker_fee).quantize(Decimal("0.01"), ROUND_DOWN)
+    estimated_total = (price * qty + estimated_fee).quantize(Decimal("0.01"), ROUND_DOWN)
+
+    logger.info(
+        f"{asset_name}: qty={qty} price={price} "
+        f"est_cost={price * qty:.2f} est_fee={estimated_fee} est_total={estimated_total} "
+        f"budget={gross_amount}"
+    )
 
     if qty < config["min_quantity"]:
-        error_msg = f"{asset_name} below minimum trade size"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        msg = f"{asset_name}: qty {qty} below minimum {config['min_quantity']}"
+        logger.error(msg)
+        return {"error": msg}
 
+    # No maker-or-cancel — order rests on the book and reserves GUSD
+    # until it fills naturally or is cancelled manually.
     payload = {
         "symbol": symbol,
         "amount": str(qty),
@@ -150,10 +147,20 @@ def execute_buy(gemini, asset_name, config, maker_fee, gusd_balance):
         "type": "exchange limit",
     }
 
-    logger.info(f"{asset_name}: Passive limit @ {price}")
     result = gemini.place_order(payload)
+    order_id = result.get("order_id")
+    logger.info(f"{asset_name}: Order placed, order_id={order_id}")
 
-    return {"mode": "passive_limit", "result": result}
+    return {
+        "mode": "passive_limit",
+        "order_id": order_id,
+        "price": str(price),
+        "qty": str(qty),
+        "estimated_fee": str(estimated_fee),
+        "estimated_total": str(estimated_total),
+        "budget": str(gross_amount),
+        "result": result,
+    }
 
 # ============================================================
 # LAMBDA HANDLER
@@ -165,95 +172,71 @@ def lambda_handler(event, context=None):
         gemini = GeminiClient(public_key, private_key)
 
         gusd_balance = get_gusd_balance(gemini)
-
-        # ==========================================
-        # Full Buy Or Skip
-        # ==========================================
-
         required_balance = (MAX_BUY + GUSD_FLOOR).quantize(Decimal("0.01"))
 
         if gusd_balance < required_balance:
-            results = {
-                "BTC": {"skipped": True, "reason": "Insufficient funds for full scheduled buy"},
-                "ETH": {"skipped": True, "reason": "Insufficient funds for full scheduled buy"}
-            }
-
             summary = {
                 "classification": "Skipped",
+                "reason": "Insufficient funds for full scheduled buy",
                 "balance": str(gusd_balance),
                 "required_balance": str(required_balance),
-                "results": results
             }
+            send_alert("Crypto Buy Lambda - Skipped (Insufficient Funds)", json.dumps(summary, indent=2))
+            return {"statusCode": 200, "body": json.dumps(summary, indent=2)}
 
-            subject = "Crypto Buy Lambda - Skipped (Insufficient Full Funds)"
-
-            send_alert(subject, json.dumps(summary, indent=2))
-
-            return {
-                "statusCode": 200,
-                "body": json.dumps(summary, indent=2)
-            }
-
-        # Fetch dynamic maker fee
+        # Fetch maker fee — fail safe to 20bps
         try:
             nv = gemini.get_notional_volume()
-            maker_fee = Decimal(int(nv.get("api_maker_fee_bps", 20))) / Decimal("10000")
+            maker_fee = Decimal(str(nv.get("api_maker_fee_bps", 20))) / Decimal("10000")
         except Exception:
             maker_fee = Decimal("0.002")
-            logger.warning("Fee fetch failed — using 0.20%")
+            logger.warning("Fee fetch failed — defaulting to 0.20%")
 
-        results = {}
-        results["BTC"] = execute_buy(gemini, "BTC", BUY_CONFIG["BTC"], maker_fee, gusd_balance)
-        results["ETH"] = execute_buy(gemini, "ETH", BUY_CONFIG["ETH"], maker_fee, gusd_balance)
+        logger.info(f"Maker fee: {maker_fee * 100:.4f}%")
 
-        # ==========================================
-        # Run Outcome Classification
-        # ==========================================
+        # Place both orders concurrently to minimize book-movement risk
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            fut_btc = executor.submit(execute_buy, gemini, "BTC", BUY_CONFIG["BTC"], maker_fee, gusd_balance)
+            fut_eth = executor.submit(execute_buy, gemini, "ETH", BUY_CONFIG["ETH"], maker_fee, gusd_balance)
+            results = {
+                "BTC": fut_btc.result(),
+                "ETH": fut_eth.result(),
+            }
 
+        # Classify outcome
         statuses = []
-
         for asset, result in results.items():
-            if result.get("skipped"):
+            if result.get("error"):
+                statuses.append("error")
+            elif result.get("skipped"):
                 statuses.append("skipped")
-            elif "mode" in result:
-                statuses.append("filled")
+            elif "order_id" in result:
+                statuses.append("placed")
             else:
                 statuses.append("unknown")
 
-        if all(s == "skipped" for s in statuses):
-            classification = "Skipped"
-        elif all(s == "filled" for s in statuses):
+        if all(s == "placed" for s in statuses):
             classification = "Success"
-        elif "filled" in statuses and "skipped" in statuses:
+        elif all(s == "skipped" for s in statuses):
+            classification = "Skipped"
+        elif "placed" in statuses and "skipped" in statuses:
             classification = "Partial"
+        elif "error" in statuses:
+            classification = "Error"
         else:
             classification = "Unknown"
 
         summary = {
             "classification": classification,
             "balance": str(gusd_balance),
-            "results": results
+            "maker_fee_bps": str(maker_fee * 10000),
+            "results": results,
         }
 
-        subject = f"Crypto Buy Lambda - {classification}"
-
-        try:
-            send_alert(
-                subject=subject,
-                message=json.dumps(summary, indent=2)
-            )
-        except Exception as e:
-            logger.error(f"Summary SNS failed: {e}")
-
-        return {
-            "statusCode": 200,
-            "body": json.dumps(summary, indent=2)
-        }
+        send_alert(f"Crypto Buy Lambda - {classification}", json.dumps(summary, indent=2))
+        return {"statusCode": 200, "body": json.dumps(summary, indent=2)}
 
     except Exception as e:
         logger.exception("Lambda execution failed")
         send_alert("Crypto Buy Lambda - Error", str(e))
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
