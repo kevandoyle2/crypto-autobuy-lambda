@@ -10,7 +10,7 @@ Parameters:
 
   NotificationEmail:
     Type: String
-    Default: kpd@duck.com
+    Default: kevan2b@icloud.com
     Description: Email address to receive alerts
 
   LambdaRuntime:
