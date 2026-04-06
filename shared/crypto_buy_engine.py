@@ -4,6 +4,12 @@ from decimal import Decimal, ROUND_DOWN
 from shared.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
 
 # Ticks below best bid for the initial MOC attempt
 PASSIVE_TICKS_BELOW_BID = 1

@@ -48,11 +48,13 @@ ssm_client = boto3.client("ssm")
 sns_client = boto3.client("sns")
 SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
 
 # ============================================================
 # ALERTING
@@ -60,9 +62,11 @@ logger = logging.getLogger(__name__)
 
 def send_alert(subject: str, message: str):
     if not SNS_TOPIC_ARN:
+        logger.warning("SNS_TOPIC_ARN not set — skipping alert")
         return
     try:
         sns_client.publish(TopicArn=SNS_TOPIC_ARN, Subject=subject, Message=message)
+        logger.info(f"SNS alert sent: {subject}")
     except Exception as e:
         logger.error(f"SNS failed: {e}")
 
@@ -93,6 +97,8 @@ def lambda_handler(event, context=None):
         gusd_balance = get_gusd_balance(gemini)
         required_balance = (MAX_BUY + GUSD_FLOOR).quantize(Decimal("0.01"))
 
+        logger.info(f"GUSD balance: {gusd_balance} — required: {required_balance}")
+
         if gusd_balance < required_balance:
             summary = {
                 "classification": "Skipped",
@@ -103,7 +109,7 @@ def lambda_handler(event, context=None):
             send_alert("Crypto Buy Lambda - Skipped (Insufficient Funds)", json.dumps(summary, indent=2))
             return {"statusCode": 200, "body": json.dumps(summary, indent=2)}
 
-        # Fetch fees (fail safe to 60bps maker / 120bps taker - Gemini base tier)
+        # Fetch fees (fail safe to 60bps maker / 120bps taker — Gemini base tier)
         try:
             nv = gemini.get_notional_volume()
             maker_fee = Decimal(str(nv.get("api_maker_fee_bps", 60))) / Decimal("10000")
