@@ -109,7 +109,7 @@ def lambda_handler(event, context=None):
             send_alert("Crypto Buy Lambda - Skipped (Insufficient Funds)", json.dumps(summary, indent=2))
             return {"statusCode": 200, "body": json.dumps(summary, indent=2)}
 
-        # Fetch fees (fail safe to 60bps maker / 120bps taker — Gemini base tier)
+        # Fetch fees - fail safe to 60bps maker / 120bps taker (Gemini base tier)
         try:
             nv = gemini.get_notional_volume()
             maker_fee = Decimal(str(nv.get("api_maker_fee_bps", 60))) / Decimal("10000")
