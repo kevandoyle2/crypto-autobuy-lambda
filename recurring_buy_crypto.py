@@ -14,7 +14,7 @@ from shared.crypto_buy_engine import execute_buy
 
 GUSD_FLOOR = Decimal("1.00")
 
-TOTAL_DEPOSIT = Decimal("170")
+TOTAL_DEPOSIT = Decimal("184")
 MAX_BUY = (TOTAL_DEPOSIT / 2).quantize(Decimal("0.01"))
 
 BTC_PERCENTAGE = Decimal("66")
@@ -109,7 +109,7 @@ def lambda_handler(event, context=None):
             send_alert("Crypto Buy Lambda - Skipped (Insufficient Funds)", json.dumps(summary, indent=2))
             return {"statusCode": 200, "body": json.dumps(summary, indent=2)}
 
-        # Fetch fees - fail safe to 60bps maker / 120bps taker (Gemini base tier)
+        # Fetch fees - fail safe to 60bps maker / 120bps taker (Gemini base fee tier)
         try:
             nv = gemini.get_notional_volume()
             maker_fee = Decimal(str(nv.get("api_maker_fee_bps", 60))) / Decimal("10000")
